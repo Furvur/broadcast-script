@@ -1,0 +1,62 @@
+services:
+  app:
+    image: gitea.hostedapp.org/broadcast/broadcast:latest
+    platform: linux/${TARGETARCH:-amd64}
+    pull_policy: always
+    container_name: app
+    restart: always
+    env_file:
+      - /opt/broadcast/app/.env
+    volumes:
+      - /opt/broadcast/app/storage:/rails/storage
+      - /opt/broadcast/app/triggers:/rails/triggers
+      - /opt/broadcast/app/monitor:/rails/monitor
+      - /opt/broadcast/logs/app:/rails/log
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - broadcast-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+  job:
+    image: gitea.hostedapp.org/broadcast/broadcast:latest
+    platform: linux/${TARGETARCH:-amd64}
+    pull_policy: always
+    container_name: job
+    restart: always
+    env_file:
+      - /opt/broadcast/app/.env
+    volumes:
+      - /opt/broadcast/app/storage:/rails/storage
+    networks:
+      - broadcast-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres
+    restart: always
+    env_file:
+      - /opt/broadcast/db/.env
+    volumes:
+      - /opt/broadcast/db/backups:/backups
+      - /opt/broadcast/db/postgres-data:/var/lib/postgresql/data
+      - /opt/broadcast/db/init-scripts:/docker-entrypoint-initdb.d
+      - /opt/broadcast/logs/db:/var/log/postgresql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U broadcast"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - broadcast-network
+
+networks:
+  broadcast-network:
+    driver: bridge
