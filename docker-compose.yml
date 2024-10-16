@@ -12,6 +12,7 @@ services:
       - /opt/broadcast/app/triggers:/rails/triggers
       - /opt/broadcast/app/monitor:/rails/monitor
       - /opt/broadcast/logs/app:/rails/log
+      - /opt/broadcast/ssl:/rails/ssl
     ports:
       - "80:80"
       - "443:443"
@@ -20,21 +21,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-  # job:
-  #   image: gitea.hostedapp.org/broadcast/broadcast:latest
-  #   platform: linux/${TARGETARCH:-amd64}
-  #   pull_policy: always
-  #   container_name: job
-  #   restart: always
-  #   env_file:
-  #     - /opt/broadcast/app/.env
-  #   volumes:
-  #     - /opt/broadcast/app/storage:/rails/storage
-  #   networks:
-  #     - broadcast-network
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
+  job:
+    image: gitea.hostedapp.org/broadcast/broadcast:latest
+    platform: linux/${TARGETARCH:-amd64}
+    pull_policy: always
+    container_name: job
+    restart: always
+    env_file:
+      - /opt/broadcast/app/.env
+    volumes:
+      - /opt/broadcast/app/storage:/rails/storage
+    networks:
+      - broadcast-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - "bin/jobs"
   postgres:
     image: postgres:17-alpine
     container_name: postgres

@@ -92,6 +92,7 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
   echo "DATABASE_HOST=postgres" >> /opt/broadcast/app/.env
   echo "DATABASE_USERNAME=$postgres_user" >> /opt/broadcast/app/.env
   echo "DATABASE_PASSWORD=$postgres_password" >> /opt/broadcast/app/.env
+  echo "STORAGE_PATH=/rails/ssl" >> /opt/broadcast/app/.env
 
   # Set the TLS domain
   domain=$(cat /opt/broadcast/.domain)
