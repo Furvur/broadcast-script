@@ -77,7 +77,7 @@ ask_license() {
             echo
             echo -e "\e[1;31m** DO THIS BEFORE PROCEEDING **\e[0m"
             echo
-            echo -e "\e[93mOnce you've completed this step, press enter to continue...\e[0m"
+            echo -e "\e[1;31mOnce you've completed this step, press enter to continue...\e[0m"
             read
             break
           else

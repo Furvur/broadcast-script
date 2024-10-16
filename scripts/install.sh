@@ -14,7 +14,7 @@ function install() {
   sudo apt-get upgrade -y
 
   # Ensure /opt/broadcast exists and has correct ownership
-  sudo chown broadcast:broadcast /opt/broadcast
+  sudo chown -R broadcast:broadcast /opt/broadcast
 
   # Setup Uncomplicated Firewall
   sudo apt-get install ufw -y
@@ -176,6 +176,9 @@ EOF
   if ! crontab -l 2>/dev/null | grep -q "/opt/broadcast/broadcast.sh update"; then
     (crontab -l 2>/dev/null; echo "0 0 * * * /opt/broadcast/broadcast.sh update") | crontab -
   fi
+
+  echo -e "\e[33mSetting permissions (double checking)...\e[0m"
+  sudo chown -R broadcast:broadcast /opt/broadcast
 
   echo -e "\e[90m  ____                      _               _   \e[0m"
   echo -e "\e[90m | __ ) _ __ ___   __ _  __| | ___ __ _ ___| |_ \e[0m"
