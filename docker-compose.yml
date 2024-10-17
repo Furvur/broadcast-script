@@ -9,6 +9,7 @@ services:
       - /opt/broadcast/app/.env
     volumes:
       - /opt/broadcast/app/storage:/rails/storage
+      - /opt/broadcast/app/uploads:/rails/uploads
       - /opt/broadcast/app/triggers:/rails/triggers
       - /opt/broadcast/app/monitor:/rails/monitor
       - /opt/broadcast/logs/app:/rails/log
