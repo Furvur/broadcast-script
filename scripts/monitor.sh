@@ -6,7 +6,7 @@ function monitor() {
     # Get memory information
     mem_total=$(free -b | awk '/Mem:/ {print $2}')
     mem_used=$(free -b | awk '/Mem:/ {print $3}')
-    mem_free_percent=$(free | awk '/Mem:/ {print $4/$2 * 100.0}')
+    mem_free_percent=$(echo "scale=2; ($mem_total - $mem_used) / $mem_total * 100" | bc)
 
     # Get disk information
     disk_total=$(df -B1 / | awk 'NR==2 {print $2}')
