@@ -22,6 +22,9 @@ function trigger() {
     # Remove the domains.txt file
     rm "/opt/broadcast/app/triggers/domains.txt"
 
+    # Ensure /opt/broadcast and all its contents belong to broadcast:broadcast
+    chown -R broadcast:broadcast /opt/broadcast
+
     /opt/broadcast/broadcast.sh restart
   fi
 }
