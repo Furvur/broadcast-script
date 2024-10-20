@@ -139,23 +139,39 @@ EOF
 
   echo -e "\e[33mBroadcast Docker Compose service created and started!\e[0m"
 
-  echo -e "\e[33mStarting monitoring...\e[0m"
-  if ! crontab -l 2>/dev/null | grep -q "/opt/broadcast/broadcast.sh monitor"; then
-    (crontab -l 2>/dev/null; echo "* * * * * /opt/broadcast/broadcast.sh monitor") | crontab -
+  echo -e "\e[33mUpdating crontab entries...\e[0m"
+
+  # Create a temporary file to store the current crontab
+  temp_crontab=$(mktemp)
+
+  # Export current crontab to the temporary file
+  crontab -l 2>/dev/null > "$temp_crontab"
+
+  # Add monitoring entry if it doesn't exist
+  if ! grep -q "/opt/broadcast/broadcast.sh monitor" "$temp_crontab"; then
+    echo "* * * * * /opt/broadcast/broadcast.sh monitor" >> "$temp_crontab"
+    echo -e "\e[33mAdded monitoring entry\e[0m"
   fi
 
-  echo -e "\e[33mStarting triggers...\e[0m"
-  if ! crontab -l 2>/dev/null | grep -q "/opt/broadcast/broadcast.sh trigger"; then
-    (crontab -l 2>/dev/null; echo "* * * * * /opt/broadcast/broadcast.sh trigger") | crontab -
+  # Add triggers entry if it doesn't exist
+  if ! grep -q "/opt/broadcast/broadcast.sh trigger" "$temp_crontab"; then
+    echo "* * * * * /opt/broadcast/broadcast.sh trigger" >> "$temp_crontab"
+    echo -e "\e[33mAdded triggers entry\e[0m"
   fi
 
-  echo -e "\e[33mStarting daily update checks...\e[0m"
-  if ! crontab -l 2>/dev/null | grep -q "/opt/broadcast/broadcast.sh update"; then
-    (crontab -l 2>/dev/null; echo "0 0 * * * /opt/broadcast/broadcast.sh update") | crontab -
+  # Add update check entry if it doesn't exist
+  if ! grep -q "/opt/broadcast/broadcast.sh update" "$temp_crontab"; then
+    echo "0 0 * * * /opt/broadcast/broadcast.sh update" >> "$temp_crontab"
+    echo -e "\e[33mAdded daily update check entry\e[0m"
   fi
 
-  echo -e "\e[33mSetting permissions (double checking)...\e[0m"
-  sudo chown -R broadcast:broadcast /opt/broadcast
+  # Install the updated crontab
+  crontab "$temp_crontab"
+
+  # Remove the temporary file
+  rm "$temp_crontab"
+
+  echo -e "\e[33mCrontab entries updated successfully\e[0m"
 
   echo -e "\e[90m  ____                      _               _   \e[0m"
   echo -e "\e[90m | __ ) _ __ ___   __ _  __| | ___ __ _ ___| |_ \e[0m"
