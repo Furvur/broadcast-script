@@ -7,6 +7,9 @@ function upgrade() {
   cd /opt/broadcast
   git pull
 
+  # Change ownership of the Broadcast directory to the broadcast user
+  sudo chown -R broadcast:broadcast /opt/broadcast
+
   # Upgrade the Broadcast containers
   echo -e "\e[33mLogging into Broadcast registry...\e[0m"
   sudo -u broadcast docker compose pull
