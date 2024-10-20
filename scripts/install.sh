@@ -140,9 +140,13 @@ EOF
   echo -e "\e[33mBroadcast Docker Compose service created and started!\e[0m"
 
   echo -e "\e[33mSetting up cron jobs...\e[0m"
-  (crontab -l 2>/dev/null; echo "* * * * * /opt/broadcast/broadcast.sh monitor";
-   echo "* * * * * /opt/broadcast/broadcast.sh trigger";
-   echo "0 0 * * * /opt/broadcast/broadcast.sh update") | sort -u | crontab -
+  (crontab -l 2>/dev/null || true; echo "* * * * * /opt/broadcast/broadcast.sh monitor") | crontab -
+  (crontab -l 2>/dev/null || true; echo "* * * * * /opt/broadcast/broadcast.sh trigger") | crontab -
+  (crontab -l 2>/dev/null || true; echo "0 0 * * * /opt/broadcast/broadcast.sh update") | crontab -
+
+  # Verify crontab entries
+  echo "Verifying crontab entries:"
+  crontab -l
 
   echo -e "\e[33mSetting permissions (double checking)...\e[0m"
   sudo chown -R broadcast:broadcast /opt/broadcast
