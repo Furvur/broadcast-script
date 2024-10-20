@@ -137,8 +137,8 @@ After=docker.service
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -c "docker compose -f /opt/broadcast/docker-compose.yml up"
-ExecStop=/bin/bash -c "docker compose -f /opt/broadcast/docker-compose.yml down"
+ExecStart=/bin/bash -c "set -a && . /opt/broadcast/.image && set +a && docker compose -f /opt/broadcast/docker-compose.yml up"
+ExecStop=/bin/bash -c "set -a && . /opt/broadcast/.image && set +a && docker compose -f /opt/broadcast/docker-compose.yml down"
 Restart=always
 User=broadcast
 WorkingDirectory=/opt/broadcast

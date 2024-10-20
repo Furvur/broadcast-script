@@ -1,6 +1,6 @@
 services:
   app:
-    image: gitea.hostedapp.org/broadcast/broadcast:latest
+    image: ${DOCKER_IMAGE:-gitea.hostedapp.org/broadcast/broadcast:latest}
     platform: linux/${TARGETARCH:-amd64}
     pull_policy: always
     container_name: app
@@ -23,7 +23,7 @@ services:
       postgres:
         condition: service_healthy
   job:
-    image: gitea.hostedapp.org/broadcast/broadcast:latest
+    image: ${DOCKER_IMAGE:-gitea.hostedapp.org/broadcast/broadcast:latest}
     platform: linux/${TARGETARCH:-amd64}
     pull_policy: always
     container_name: job

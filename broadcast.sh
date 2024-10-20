@@ -63,6 +63,15 @@ main() {
   current_dir=$(getCurrentDir)
   includeDependencies
 
+  # Stupid Docker image when cross compiled does not work even when compiling on
+  # Mac M processors, Intel processes!
+  if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:latest" > .image
+  else
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:latest" > .image
+  fi
+
+
   display_logo
   check_root
   check_installation_domain
