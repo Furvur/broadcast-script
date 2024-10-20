@@ -67,10 +67,12 @@ main() {
   # Mac M processors, Intel processes!
   if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
     echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:latest" > .image
+    echo "TARGETARCH=arm64" >> .image
   else
     echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:latest" > .image
   fi
 
+  sudo chown -R broadcast:broadcast /opt/broadcast
 
   display_logo
   check_root
