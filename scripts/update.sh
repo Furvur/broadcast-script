@@ -5,7 +5,7 @@ function update() {
   git pull
 
   # Update systemd service for broadcast
-  source scripts/services/init-services.sh
+  source scripts/init-services.sh
   create_broadcast_service
 
   # Change ownership of the Broadcast directory to the broadcast user

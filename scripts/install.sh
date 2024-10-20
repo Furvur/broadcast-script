@@ -127,7 +127,7 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
 
   echo -e "\e[33mDocker installation completed!\e[0m"
 
-  source scripts/services/init-services.sh
+  source scripts/init-services.sh
   create_broadcast_service
 
   # Pull docker images and start the service as the broadcast user
