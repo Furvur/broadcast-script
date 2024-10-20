@@ -72,8 +72,6 @@ main() {
     echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:latest" > .image
   fi
 
-  sudo chown -R broadcast:broadcast /opt/broadcast
-
   display_logo
   check_root
   check_installation_domain
