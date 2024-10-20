@@ -127,31 +127,8 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
 
   echo -e "\e[33mDocker installation completed!\e[0m"
 
-  # Create systemd service file for Broadcast
-  echo -e "\e[33mCreating systemd service for Broadcast...\e[0m"
-  sudo tee /etc/systemd/system/broadcast.service > /dev/null <<EOT
-[Unit]
-Description=Broadcast
-Requires=docker.service
-After=docker.service
-
-[Service]
-Type=simple
-ExecStart=/bin/bash -c "set -a && . /opt/broadcast/.image && set +a && docker compose -f /opt/broadcast/docker-compose.yml up"
-ExecStop=/bin/bash -c "set -a && . /opt/broadcast/.image && set +a && docker compose -f /opt/broadcast/docker-compose.yml down"
-Restart=always
-User=broadcast
-WorkingDirectory=/opt/broadcast
-
-[Install]
-WantedBy=multi-user.target
-EOT
-
-  # Reload systemd to recognize the new service
-  sudo systemctl daemon-reload
-
-  # Enable the service to start on boot
-  sudo systemctl enable broadcast.service
+  source scripts/services/init-services.sh
+  create_broadcast_service
 
   # Pull docker images and start the service as the broadcast user
   sudo -u broadcast bash << EOF

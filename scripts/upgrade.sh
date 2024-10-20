@@ -2,13 +2,8 @@ function upgrade() {
   echo -e "\e[33mStopping Broadcast service...\e[0m"
   systemctl stop broadcast
 
-  echo -e "\e[33mUpgrading Broadcast scripts...\e[0m"
-  # Upgrade the Broadcast scripts
-  cd /opt/broadcast
-  git pull
-
-  # Change ownership of the Broadcast directory to the broadcast user
-  sudo chown -R broadcast:broadcast /opt/broadcast
+  echo -e "\e[33mRunning Broadcast update script...\e[0m"
+  sudo -u broadcast /opt/broadcast/broadcast.sh update
 
   # Upgrade the Broadcast containers
   echo -e "\e[33mLogging into Broadcast registry...\e[0m"

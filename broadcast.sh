@@ -95,6 +95,9 @@ main() {
     upgrade)
       upgrade
       ;;
+    update)
+      update
+      ;;
     restart)
       restart
       ;;
