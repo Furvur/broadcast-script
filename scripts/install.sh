@@ -147,26 +147,15 @@ EOF
   # Export current crontab to the temporary file
   crontab -l 2>/dev/null > "$temp_crontab"
 
-  # Add monitoring entry if it doesn't exist
-  if ! grep -q "/opt/broadcast/broadcast.sh monitor" "$temp_crontab"; then
-    echo "* * * * * /opt/broadcast/broadcast.sh monitor" >> "$temp_crontab"
-    echo -e "\e[33mAdded monitoring entry\e[0m"
-  fi
+  # Add or update crontab entries
+  {
+    echo "* * * * * /opt/broadcast/broadcast.sh monitor"
+    echo "* * * * * /opt/broadcast/broadcast.sh trigger"
+    echo "0 0 * * * /opt/broadcast/broadcast.sh update"
+  } >> "$temp_crontab"
 
-  # Add triggers entry if it doesn't exist
-  if ! grep -q "/opt/broadcast/broadcast.sh trigger" "$temp_crontab"; then
-    echo "* * * * * /opt/broadcast/broadcast.sh trigger" >> "$temp_crontab"
-    echo -e "\e[33mAdded triggers entry\e[0m"
-  fi
-
-  # Add update check entry if it doesn't exist
-  if ! grep -q "/opt/broadcast/broadcast.sh update" "$temp_crontab"; then
-    echo "0 0 * * * /opt/broadcast/broadcast.sh update" >> "$temp_crontab"
-    echo -e "\e[33mAdded daily update check entry\e[0m"
-  fi
-
-  # Install the updated crontab
-  crontab "$temp_crontab"
+  # Remove duplicate entries and install the updated crontab
+  sort -u "$temp_crontab" | crontab -
 
   # Remove the temporary file
   rm "$temp_crontab"
