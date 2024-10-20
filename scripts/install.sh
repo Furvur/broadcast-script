@@ -139,28 +139,13 @@ EOF
 
   echo -e "\e[33mBroadcast Docker Compose service created and started!\e[0m"
 
-  echo -e "\e[33mUpdating crontab entries...\e[0m"
+  echo -e "\e[33mSetting up cron jobs...\e[0m"
+  (crontab -l 2>/dev/null; echo "* * * * * /opt/broadcast/broadcast.sh monitor";
+   echo "* * * * * /opt/broadcast/broadcast.sh trigger";
+   echo "0 0 * * * /opt/broadcast/broadcast.sh update") | sort -u | crontab -
 
-  # Create a temporary file to store the current crontab
-  temp_crontab=$(mktemp)
-
-  # Export current crontab to the temporary file
-  crontab -l 2>/dev/null > "$temp_crontab"
-
-  # Add or update crontab entries
-  {
-    echo "* * * * * /opt/broadcast/broadcast.sh monitor"
-    echo "* * * * * /opt/broadcast/broadcast.sh trigger"
-    echo "0 0 * * * /opt/broadcast/broadcast.sh update"
-  } >> "$temp_crontab"
-
-  # Remove duplicate entries and install the updated crontab
-  sort -u "$temp_crontab" | crontab -
-
-  # Remove the temporary file
-  rm "$temp_crontab"
-
-  echo -e "\e[33mCrontab entries updated successfully\e[0m"
+  echo -e "\e[33mSetting permissions (double checking)...\e[0m"
+  sudo chown -R broadcast:broadcast /opt/broadcast
 
   echo -e "\e[90m  ____                      _               _   \e[0m"
   echo -e "\e[90m | __ ) _ __ ___   __ _  __| | ___ __ _ ___| |_ \e[0m"
