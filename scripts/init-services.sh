@@ -4,7 +4,9 @@ create_broadcast_service() {
   echo -e "\e[33mCreating systemd service for Broadcast...\e[0m"
 
   # Disable the service if it exists
-  sudo systemctl disable broadcast.service
+  if systemctl is-active --quiet broadcast.service; then
+    sudo systemctl disable broadcast.service
+  fi
 
   # Create systemd service file for Broadcast
   sudo tee /etc/systemd/system/broadcast.service > /dev/null <<EOT
