@@ -83,33 +83,39 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo apt-get update
 
-  # Set some app environment variables
-  local postgres_user="broadcast"
-  local postgres_password=$(openssl rand -hex 16)
 
-  echo "RAILS_ENV=production" >> /opt/broadcast/app/.env
-  echo "SECRET_KEY_BASE=$(openssl rand -hex 64)" >> /opt/broadcast/app/.env
-  echo "DATABASE_HOST=postgres" >> /opt/broadcast/app/.env
-  echo "DATABASE_USERNAME=$postgres_user" >> /opt/broadcast/app/.env
-  echo "DATABASE_PASSWORD=$postgres_password" >> /opt/broadcast/app/.env
-  echo "STORAGE_PATH=/rails/ssl" >> /opt/broadcast/app/.env
-
-  # Set the TLS domain
-  domain=$(cat /opt/broadcast/.domain)
-  if [ -f /opt/broadcast/.other_domains ]; then
-    other_domains=$(cat /opt/broadcast/.other_domains | tr '\n' ',' | sed 's/,$//')
-    echo "TLS_DOMAIN=$domain,$other_domains" >> /opt/broadcast/app/.env
+  if [ -f /opt/broadcast/app/.env ]; then
+    echo "app/.env already exists. Skipping creation."
   else
-    echo "TLS_DOMAIN=$domain" >> /opt/broadcast/app/.env
+    echo "Creating app/.env..."
+
+    # Set some app environment variables
+    local postgres_user="broadcast"
+    local postgres_password=$(openssl rand -hex 16)
+
+    echo "RAILS_ENV=production" >> /opt/broadcast/app/.env
+    echo "SECRET_KEY_BASE=$(openssl rand -hex 64)" >> /opt/broadcast/app/.env
+    echo "DATABASE_HOST=postgres" >> /opt/broadcast/app/.env
+    echo "DATABASE_USERNAME=$postgres_user" >> /opt/broadcast/app/.env
+    echo "DATABASE_PASSWORD=$postgres_password" >> /opt/broadcast/app/.env
+    echo "STORAGE_PATH=/rails/ssl" >> /opt/broadcast/app/.env
+    # Set the TLS domain
+    domain=$(cat /opt/broadcast/.domain)
+    if [ -f /opt/broadcast/.other_domains ]; then
+      other_domains=$(cat /opt/broadcast/.other_domains | tr '\n' ',' | sed 's/,$//')
+      echo "TLS_DOMAIN=$domain,$other_domains" >> /opt/broadcast/app/.env
+    else
+      echo "TLS_DOMAIN=$domain" >> /opt/broadcast/app/.env
+    fi
+
+    license=$(cat /opt/broadcast/.license)
+    echo "LICENSE_KEY=$license" >> /opt/broadcast/app/.env
+
+    # Set some db environment variables
+    echo "POSTGRES_USER=$postgres_user" >> /opt/broadcast/db/.env
+    echo "POSTGRES_PASSWORD=$postgres_password" >> /opt/broadcast/db/.env
+    echo "POSTGRES_MULTIPLE_DATABASES=broadcast_primary_production,broadcast_queue_production,broadcast_cable_production" >> /opt/broadcast/db/.env
   fi
-
-  license=$(cat /opt/broadcast/.license)
-  echo "LICENSE_KEY=$license" >> /opt/broadcast/app/.env
-
-  # Set some db environment variables
-  echo "POSTGRES_USER=$postgres_user" >> /opt/broadcast/db/.env
-  echo "POSTGRES_PASSWORD=$postgres_password" >> /opt/broadcast/db/.env
-  echo "POSTGRES_MULTIPLE_DATABASES=broadcast_primary_production,broadcast_queue_production,broadcast_cable_production" >> /opt/broadcast/db/.env
 
   # Install Docker packages
   sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
