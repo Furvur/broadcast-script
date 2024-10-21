@@ -83,7 +83,9 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo apt-get update
 
+domain=$(cat /opt/broadcast/.domain)
 
+  # Check if app/.env exists, create if not
   if [ -f /opt/broadcast/app/.env ]; then
     echo "app/.env already exists. Skipping creation."
   else
@@ -99,8 +101,8 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
     echo "DATABASE_USERNAME=$postgres_user" >> /opt/broadcast/app/.env
     echo "DATABASE_PASSWORD=$postgres_password" >> /opt/broadcast/app/.env
     echo "STORAGE_PATH=/rails/ssl" >> /opt/broadcast/app/.env
+
     # Set the TLS domain
-    domain=$(cat /opt/broadcast/.domain)
     if [ -f /opt/broadcast/.other_domains ]; then
       other_domains=$(cat /opt/broadcast/.other_domains | tr '\n' ',' | sed 's/,$//')
       echo "TLS_DOMAIN=$domain,$other_domains" >> /opt/broadcast/app/.env
