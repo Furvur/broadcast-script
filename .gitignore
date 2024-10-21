@@ -3,7 +3,7 @@
 .domain
 .image
 .other_domains
-app/monitors/*
+app/monitor/*
 app/uploads/*
 app/triggers/*
 logs/*
