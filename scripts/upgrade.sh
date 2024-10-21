@@ -7,7 +7,7 @@ function upgrade() {
 
   # Upgrade the Broadcast containers
   echo -e "\e[33mLogging into Broadcast registry...\e[0m"
-  sudo -u broadcast docker compose pull
+  su - broadcast -c 'cd /opt/broadcast && docker compose pull'
 
   echo -e "\e[33mRestarting Broadcast service...\e[0m"
   systemctl start broadcast
