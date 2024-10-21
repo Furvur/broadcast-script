@@ -2,13 +2,13 @@ function display_logs() {
   if [ $# -eq 2 ] && [ "$1" = "logs" ]; then
     case "$2" in
       app)
-        docker logs app
+        docker logs --follow app
         ;;
       job)
-        docker logs job
+        docker logs --follow job
         ;;
       db)
-        docker logs postgres
+        docker logs --follow postgres
         ;;
       *)
         echo "Please specify a valid log type: app, job, or db"
