@@ -28,6 +28,7 @@ function includeDependencies() {
   source "${current_dir}/scripts/monitor.sh"
   source "${current_dir}/scripts/trigger.sh"
   source "${current_dir}/scripts/update.sh"
+  source "${current_dir}/scripts/logs.sh"
 }
 
 function display_help() {
@@ -119,6 +120,9 @@ main() {
       ;;
     trigger)
       trigger
+      ;;
+    logs)
+      display_logs
       ;;
     help)
       display_help
