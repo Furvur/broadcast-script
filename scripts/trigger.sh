@@ -5,6 +5,11 @@ function trigger() {
     rm "/opt/broadcast/app/triggers/upgrade.txt"
     # If the file exists, run the upgrade command
     /opt/broadcast/broadcast.sh upgrade
+
+    # Ensure /opt/broadcast and all its contents belong to broadcast:broadcast
+    chown -R broadcast:broadcast /opt/broadcast
+
+    /opt/broadcast/broadcast.sh restart
   fi
 
   if [ -f "/opt/broadcast/app/triggers/domains.txt" ]; then
