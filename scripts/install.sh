@@ -148,6 +148,7 @@ EOF
   echo -e "\e[33mBroadcast Docker Compose service created and started!\e[0m"
 
   echo -e "\e[33mSetting up cron jobs...\e[0m"
+  mkdir -p /opt/broadcast/logs/cron
   (crontab -l 2>/dev/null || true; echo "* * * * * /opt/broadcast/broadcast.sh monitor >> /opt/broadcast/logs/cron/monitor.log 2>&1") | crontab -
   (crontab -l 2>/dev/null || true; echo "* * * * * /opt/broadcast/broadcast.sh trigger >> /opt/broadcast/logs/cron/trigger.log 2>&1") | crontab -
   (crontab -l 2>/dev/null || true; echo "0 0 * * * /opt/broadcast/broadcast.sh update >> /opt/broadcast/logs/cron/update.log 2>&1") | crontab -
