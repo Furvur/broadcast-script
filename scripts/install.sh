@@ -147,6 +147,25 @@ EOF
   echo -e "\e[33mSetting permissions (double checking)...\e[0m"
   sudo chown -R broadcast:broadcast /opt/broadcast
 
+  # Install logrotate
+  sudo apt-get install -y logrotate
+
+  # Set up logrotate for Broadcast logs
+  echo "Setting up logrotate for Broadcast logs..."
+  sudo tee /etc/logrotate.d/broadcast <<EOF
+/opt/broadcast/logs/**/*.log {
+    daily
+    missingok
+    rotate 5
+    compress
+    delaycompress
+    notifempty
+    create 0640 broadcast broadcast
+    sharedscripts
+    endscript
+}
+EOF
+
   echo -e "\e[90m  ____                      _               _   \e[0m"
   echo -e "\e[90m | __ ) _ __ ___   __ _  __| | ___ __ _ ___| |_ \e[0m"
   echo -e "\e[90m |  _ \| '__/ _ \ / _\` |/ _\` |/ __/ _\` / __| __|\e[0m"

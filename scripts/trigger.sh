@@ -1,13 +1,17 @@
 function trigger() {
   # Check if the upgrade.txt file exists in the triggers directory
   if [ -f "/opt/broadcast/app/triggers/upgrade.txt" ]; then
+    echo "[$(date)] upgrade triggered, running upgrade"
     # Remove the upgrade.txt file
     rm "/opt/broadcast/app/triggers/upgrade.txt"
     # If the file exists, run the upgrade command
     /opt/broadcast/broadcast.sh upgrade
+
+    echo "[$(date)] upgrade completed"
   fi
 
   if [ -f "/opt/broadcast/app/triggers/domains.txt" ]; then
+    echo "[$(date)] domains change triggered, updating domains"
     # Copy domains.txt to /opt/broadcast/.other_domains
     cp "/opt/broadcast/app/triggers/domains.txt" "/opt/broadcast/.other_domains"
 
@@ -24,6 +28,8 @@ function trigger() {
 
     # Ensure /opt/broadcast and all its contents belong to broadcast:broadcast
     chown -R broadcast:broadcast /opt/broadcast
+
+    echo "[$(date)] domains updated, restarting services"
 
     /opt/broadcast/broadcast.sh restart
   fi
