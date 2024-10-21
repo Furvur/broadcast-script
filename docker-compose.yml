@@ -12,7 +12,6 @@ services:
       - /opt/broadcast/app/uploads:/rails/uploads
       - /opt/broadcast/app/triggers:/rails/triggers
       - /opt/broadcast/app/monitor:/rails/monitor
-      - /opt/broadcast/logs/app:/rails/log
       - /opt/broadcast/ssl:/rails/ssl
     ports:
       - "80:80"
@@ -49,7 +48,6 @@ services:
       - /opt/broadcast/db/backups:/backups
       - /opt/broadcast/db/postgres-data:/var/lib/postgresql/data
       - /opt/broadcast/db/init-scripts:/docker-entrypoint-initdb.d
-      - /opt/broadcast/logs/db:/var/log/postgresql
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
