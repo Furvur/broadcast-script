@@ -122,7 +122,11 @@ main() {
       trigger
       ;;
     logs)
-      display_logs "$2"
+      if [ $# -lt 2 ]; then
+        echo "Usage: $0 logs <app|job|db>"
+        exit 1
+      fi
+      display_logs "$@"
       ;;
     help)
       display_help
