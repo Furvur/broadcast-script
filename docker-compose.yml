@@ -21,6 +21,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   job:
     image: ${DOCKER_IMAGE:-gitea.hostedapp.org/broadcast/broadcast:latest}
     platform: linux/${TARGETARCH:-amd64}
@@ -38,6 +43,11 @@ services:
         condition: service_healthy
     command:
       - "bin/jobs"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
   postgres:
     image: postgres:17-alpine
     container_name: postgres
@@ -58,6 +68,11 @@ services:
       start_period: 30s
     networks:
       - broadcast-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   broadcast-network:
