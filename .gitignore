@@ -3,7 +3,9 @@
 .domain
 .image
 .other_domains
+app/monitors/*
 app/uploads/*
+app/triggers/*
 logs/*
 db/postgres-data
 ssl/*
