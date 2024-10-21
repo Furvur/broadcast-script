@@ -72,7 +72,10 @@ main() {
     echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:latest" > .image
   fi
 
-  display_logo
+  if [ $# -eq 0 ] || [ "$1" = "install" ]; then
+    display_logo
+  fi
+
   check_root
   check_installation_domain
   check_license
