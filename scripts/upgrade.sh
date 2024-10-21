@@ -3,7 +3,7 @@ function upgrade() {
   systemctl stop broadcast
 
   echo -e "\e[33mRunning Broadcast update script...\e[0m"
-  sudo -u broadcast /opt/broadcast/broadcast.sh update
+  /opt/broadcast/broadcast.sh update
 
   # Upgrade the Broadcast containers
   echo -e "\e[33mLogging into Broadcast registry...\e[0m"
