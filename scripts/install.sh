@@ -144,10 +144,6 @@ EOF
   (crontab -l 2>/dev/null || true; echo "* * * * * /opt/broadcast/broadcast.sh trigger") | crontab -
   (crontab -l 2>/dev/null || true; echo "0 0 * * * /opt/broadcast/broadcast.sh update") | crontab -
 
-  # Verify crontab entries
-  echo "Verifying crontab entries:"
-  crontab -l
-
   echo -e "\e[33mSetting permissions (double checking)...\e[0m"
   sudo chown -R broadcast:broadcast /opt/broadcast
 
