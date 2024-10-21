@@ -122,7 +122,7 @@ main() {
       trigger
       ;;
     logs)
-      logs "$2"
+      display_logs "$2"
       ;;
     help)
       display_help
