@@ -4,12 +4,5 @@ function update() {
   cd /opt/broadcast
   git pull
 
-  # Update systemd service for broadcast
-  # source scripts/init-services.sh
-  # create_broadcast_service
-
-  # Change ownership of the Broadcast directory to the broadcast user
-  # sudo chown -R broadcast:broadcast /opt/broadcast
-
   echo -e "\e[32mBroadcast scripts upgraded successfully!\e[0m"
 }
