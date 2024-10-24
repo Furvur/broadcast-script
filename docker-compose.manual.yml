@@ -1,0 +1,23 @@
+services:
+  app:
+    ports:
+      - "127.0.0.1:3000:3000" # Or replace with your desired port
+    env_file:
+      - /home/replace-with-your-user/broadcast/app/.env
+    volumes:
+      - /home/replace-with-your-user/broadcast/app/storage:/rails/storage
+      - /home/replace-with-your-user/broadcast/app/uploads:/rails/uploads
+  job:
+    env_file:
+      - /home/replace-with-your-user/broadcast/app/.env
+    volumes:
+      - /home/replace-with-your-user/broadcast/app/storage:/rails/storage
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432" # Or replace with your desired port
+    env_file:
+      - /home/replace-with-your-user/broadcast/db/.env
+    volumes:
+      - /home/replace-with-your-user/broadcast/db/backups:/backups
+      - /home/replace-with-your-user/broadcast/db/postgres-data:/var/lib/postgresql/data
+      - /home/replace-with-your-user/broadcast/db/init-scripts:/docker-entrypoint-initdb.d
