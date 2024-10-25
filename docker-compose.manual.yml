@@ -1,24 +1,78 @@
 services:
   app:
-    command: bin/rails server
-    ports:
-      - "127.0.0.1:3000:3000" # Or replace with your desired port
+    image: ${DOCKER_IMAGE:-gitea.hostedapp.org/broadcast/broadcast:latest}
+    platform: linux/${TARGETARCH:-amd64}
+    pull_policy: always
+    container_name: app
+    restart: always
     env_file:
       - /home/replace-with-your-user/broadcast/app/.env
     volumes:
       - /home/replace-with-your-user/broadcast/app/storage:/rails/storage
       - /home/replace-with-your-user/broadcast/app/uploads:/rails/uploads
+    ports:
+      - "127.0.0.1:3000:3000" # Overrides default ports
+    networks:
+      - broadcast-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: bin/rails server # Overrides default command
+
   job:
+    image: ${DOCKER_IMAGE:-gitea.hostedapp.org/broadcast/broadcast:latest}
+    platform: linux/${TARGETARCH:-amd64}
+    pull_policy: always
+    container_name: job
+    restart: always
     env_file:
       - /home/replace-with-your-user/broadcast/app/.env
     volumes:
       - /home/replace-with-your-user/broadcast/app/storage:/rails/storage
+    networks:
+      - broadcast-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - "bin/jobs"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   postgres:
-    ports:
-      - "127.0.0.1:5432:5432" # Or replace with your desired port
+    image: postgres:17-alpine
+    container_name: postgres
+    restart: always
     env_file:
       - /home/replace-with-your-user/broadcast/db/.env
     volumes:
       - /home/replace-with-your-user/broadcast/db/backups:/backups
       - /home/replace-with-your-user/broadcast/db/postgres-data:/var/lib/postgresql/data
       - /home/replace-with-your-user/broadcast/db/init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U broadcast"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - broadcast-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  broadcast-network:
+    driver: bridge
