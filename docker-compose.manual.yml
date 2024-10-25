@@ -1,5 +1,6 @@
 services:
   app:
+    command: bin/rails server
     ports:
       - "127.0.0.1:3000:3000" # Or replace with your desired port
     env_file:

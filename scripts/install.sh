@@ -83,7 +83,7 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo apt-get update
 
-domain=$(cat /opt/broadcast/.domain)
+  domain=$(cat /opt/broadcast/.domain)
 
   # Check if app/.env exists, create if not
   if [ -f /opt/broadcast/app/.env ]; then
