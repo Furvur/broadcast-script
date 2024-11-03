@@ -33,4 +33,10 @@ function trigger() {
 
     /opt/broadcast/broadcast.sh restart
   fi
+
+  if [ -f "/opt/broadcast/app/triggers/backup-db.txt" ]; then
+    echo "[$(date)] backup triggered, backing up database"
+    rm "/opt/broadcast/app/triggers/backup-db.txt"
+    /opt/broadcast/broadcast.sh backup_database
+  fi
 }
