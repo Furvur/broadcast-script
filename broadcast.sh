@@ -35,17 +35,18 @@ function display_help() {
   echo "Usage: $0 {install|update|upgrade|restart|stop|start|backup|restore|help|monitor|trigger}"
   echo
   echo "Commands:"
-  echo "  install   Install Broadcast onto a fresh Ubuntu server"
-  echo "  update    Update Broadcast scripts"
-  echo "  upgrade   Upgrade Broadcast images and restart the system"
-  echo "  restart   Reboot Broadcast services"
-  echo "  stop      Stop Broadcast services"
-  echo "  start     Start Broadcast services"
-  echo "  backup    Backup Broadcast primary database"
-  echo "  restore   Restore Broadcast primary database"
-  echo "  help      Display this help message"
-  echo "  monitor   Automated feedback of host metrics to the dashboard"
-  echo "  trigger   Automated check on triggers from Broadcast to the host"
+  echo "  install          Install Broadcast onto a fresh Ubuntu server"
+  echo "  update           Update Broadcast scripts"
+  echo "  upgrade          Upgrade Broadcast images and restart the system"
+  echo "  restart          Reboot Broadcast services"
+  echo "  stop             Stop Broadcast services"
+  echo "  start            Start Broadcast services"
+  echo "  backup           Backup Broadcast database and files to S3"
+  echo "  backup_database  Backup Broadcast primary database"
+  echo "  restore          Restore Broadcast primary database"
+  echo "  help             Display this help message"
+  echo "  monitor          Automated feedback of host metrics to the dashboard"
+  echo "  trigger          Automated check on triggers from Broadcast to the host"
 }
 
 function set_safe_directory() {
@@ -112,6 +113,9 @@ main() {
     backup)
       backup
       ;;
+    backup_database)
+      backup_database
+      ;;
     restore)
       restore
       ;;
@@ -132,7 +136,7 @@ main() {
       display_help
       ;;
     *)
-      echo "Usage: $0 {install|upgrade|restart|stop|start|backup|restore|help}"
+      echo "Usage: $0 {install|upgrade|restart|stop|start|backup|backup_database|restore|help}"
       exit 1
       ;;
   esac
