@@ -17,6 +17,7 @@ function create_database_backup_file() {
   backup_file_name="broadcast-backup-$timestamp"
 
   # We only backup the primary database. The queue and cache databases are ephemeral and considered unimportant for restoration.
+  cd /opt/broadcast
   sudo docker compose exec postgres pg_dump -U broadcast -Fc broadcast_primary_production > /opt/broadcast/db/backups/temp-backup.dump
   sudo mv /opt/broadcast/db/backups/temp-backup.dump /opt/broadcast/db/backups/$backup_file_name.dump
   sudo tar -czvf /opt/broadcast/db/backups/$backup_file_name.tar.gz /opt/broadcast/db/backups/$backup_file_name.dump
