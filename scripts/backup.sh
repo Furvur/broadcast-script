@@ -6,8 +6,8 @@ function backup() {
 function backup_database() {
   create_database_backup_file
 
-  cp /opt/broadcast/db/backups/broadcast-backup-*.tar.gz /opt/broadcast/app/storage
-  chown -R broadcast:broadcast /opt/broadcast/app/storage/broadcast-backup-*.tar.gz
+  sudo cp /opt/broadcast/db/backups/broadcast-backup-*.tar.gz /opt/broadcast/app/storage
+  sudo chown -R broadcast:broadcast /opt/broadcast/app/storage/broadcast-backup-*.tar.gz
 }
 
 function create_database_backup_file() {
@@ -17,11 +17,11 @@ function create_database_backup_file() {
   backup_file_name="broadcast-backup-$timestamp"
 
   # We only backup the primary database. The queue and cache databases are ephemeral and considered unimportant for restoration.
-  docker compose exec postgres pg_dump -U broadcast -Fc broadcast_primary_production > /opt/broadcast/db/backups/temp-backup.dump
-  mv /opt/broadcast/db/backups/temp-backup.dump /opt/broadcast/db/backups/$backup_file_name.dump
-  tar -czvf /opt/broadcast/db/backups/$backup_file_name.tar.gz /opt/broadcast/db/backups/$backup_file_name.dump
-  rm /opt/broadcast/db/backups/$backup_file_name.dump
-  chown -R broadcast:broadcast /opt/broadcast/db/backups
+  sudo docker compose exec postgres pg_dump -U broadcast -Fc broadcast_primary_production > /opt/broadcast/db/backups/temp-backup.dump
+  sudo mv /opt/broadcast/db/backups/temp-backup.dump /opt/broadcast/db/backups/$backup_file_name.dump
+  sudo tar -czvf /opt/broadcast/db/backups/$backup_file_name.tar.gz /opt/broadcast/db/backups/$backup_file_name.dump
+  sudo rm /opt/broadcast/db/backups/$backup_file_name.dump
+  sudo chown -R broadcast:broadcast /opt/broadcast/db/backups
 
   # Remove all but the most recent backup file
   cd /opt/broadcast/db/backups && ls -t broadcast-backup-*.tar.gz | tail -n +2 | xargs -r rm --
