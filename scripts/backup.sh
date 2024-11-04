@@ -5,6 +5,9 @@ function backup() {
 
 function backup_database() {
   create_database_backup_file
+
+  cp /opt/broadcast/db/backups/broadcast-backup-*.tar.gz /opt/broadcast/app/storage
+  chown -R broadcast:broadcast /opt/broadcast/app/storage/broadcast-backup-*.tar.gz
 }
 
 function create_database_backup_file() {
