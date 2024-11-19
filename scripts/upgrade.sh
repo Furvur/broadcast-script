@@ -5,6 +5,10 @@ function upgrade() {
   echo -e "\e[33mRunning Broadcast update script...\e[0m"
   /opt/broadcast/broadcast.sh update
 
+  # Clean up unused images
+  echo -e "\e[33mCleaning up unused Docker images...\e[0m"
+  docker image prune -f
+
   # Upgrade the Broadcast containers
   echo -e "\e[33mLogging into Broadcast registry...\e[0m"
   su - broadcast -c 'cd /opt/broadcast && docker compose pull'
