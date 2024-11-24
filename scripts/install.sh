@@ -135,7 +135,7 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
 
   echo -e "\e[33mDocker installation completed!\e[0m"
 
-  source scripts/init-services.sh
+  source /opt/broadcast/scripts/init-services.sh
   create_broadcast_service
 
   # Pull docker images and start the service as the broadcast user
@@ -194,6 +194,13 @@ EOF
   echo -e "\e[31mWe will reboot your system now.\e[0m"
   echo
   echo -e "\e[93mWhen your system is rebooted, you can access the web interface at https://$domain to set up your admin account.\e[0m"
+
+  if [ -f /opt/broadcast/.install_complete ]; then
+    install_url=$(cat /opt/broadcast/.install_complete)
+    if [ ! -z "$install_url" ]; then
+      curl -s -S -L --retry 3 "$install_url" || echo "Failed to notify installation completion"
+    fi
+  fi
 
   sudo reboot
 }
