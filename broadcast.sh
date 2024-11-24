@@ -47,6 +47,7 @@ function display_help() {
   echo "  help             Display this help message"
   echo "  monitor          Automated feedback of host metrics to the dashboard"
   echo "  trigger          Automated check on triggers from Broadcast to the host"
+  echo "  validate_license Validate the license for Broadcast"
 }
 
 function set_safe_directory() {
@@ -124,6 +125,9 @@ main() {
       ;;
     trigger)
       trigger
+      ;;
+    validate_license)
+      validate_license
       ;;
     logs)
       if [ $# -lt 2 ]; then
