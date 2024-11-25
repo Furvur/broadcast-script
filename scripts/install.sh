@@ -195,13 +195,19 @@ EOF
   echo
   echo -e "\e[93mWhen your system is rebooted, you can access the web interface at https://$domain to set up your admin account.\e[0m"
 
-  # Stupid Docker image when cross compiled does not work even when compiling on
-  # Mac M processors, Intel processes!
-  if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
-    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:latest" > .image
-    echo "TARGETARCH=arm64" >> .image
+  # More reliable architecture detection using multiple methods
+  is_arm() {
+    local arch
+    # Try different methods to detect ARM
+    arch=$(dpkg --print-architecture 2>/dev/null || arch 2>/dev/null || uname -m 2>/dev/null)
+    [[ "$arch" =~ ^(arm64|aarch64|armv8|arm)$ ]] && return 0 || return 1
+  }
+
+  if is_arm; then
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:latest" > /opt/broadcast/.image
+    echo "TARGETARCH=arm64" >> /opt/broadcast/.image
   else
-    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:latest" > .image
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:latest" > /opt/broadcast/.image
   fi
   chown broadcast:broadcast /opt/broadcast/.image
 
