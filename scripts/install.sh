@@ -195,6 +195,16 @@ EOF
   echo
   echo -e "\e[93mWhen your system is rebooted, you can access the web interface at https://$domain to set up your admin account.\e[0m"
 
+  # Stupid Docker image when cross compiled does not work even when compiling on
+  # Mac M processors, Intel processes!
+  if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:latest" > .image
+    echo "TARGETARCH=arm64" >> .image
+  else
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:latest" > .image
+  fi
+  chown broadcast:broadcast /opt/broadcast/.image
+
   if [ -f /opt/broadcast/.install_complete ]; then
     install_url=$(cat /opt/broadcast/.install_complete)
     if [ ! -z "$install_url" ]; then
