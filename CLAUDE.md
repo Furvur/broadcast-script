@@ -60,11 +60,7 @@ The system automatically detects ARM64/AMD64 architecture and sets appropriate D
 - `db/.env`: PostgreSQL environment
 
 ### Web Server
-Uses Caddy as reverse proxy with:
-- Automatic HTTPS with internal TLS
-- WebSocket support for Rails
-- Security headers and GZIP compression
-- Proxies to Rails app on port 3000
+Uses Thruster (https://github.com/basecamp/thruster) for the web server, configured elsewhere.
 
 ## Development Notes
 
