@@ -1,5 +1,5 @@
 function upgrade() {
-  local target_version="$1"
+  local target_version="${1:-}"
   local current_version=$(get_current_version)
   
   if [ -n "$target_version" ]; then
