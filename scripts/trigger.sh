@@ -1,13 +1,33 @@
 function trigger() {
   # Check if the upgrade.txt file exists in the triggers directory
   if [ -f "/opt/broadcast/app/triggers/upgrade.txt" ]; then
-    echo "[$(date)] upgrade triggered, running upgrade"
-    # Remove the upgrade.txt file
-    rm "/opt/broadcast/app/triggers/upgrade.txt"
-    # If the file exists, run the upgrade command
-    /opt/broadcast/broadcast.sh upgrade
-
-    echo "[$(date)] upgrade completed"
+    # Read the content of the upgrade.txt file
+    trigger_content=$(cat "/opt/broadcast/app/triggers/upgrade.txt" 2>/dev/null || echo "")
+    
+    # Validate if content looks like a version number (semantic versioning: x.y.z)
+    if echo "$trigger_content" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)?(\+[a-zA-Z0-9\.-]+)?$'; then
+      target_version="$trigger_content"
+      echo "[$(date)] upgrade triggered with target version: $target_version"
+      
+      # Remove the upgrade.txt file
+      rm "/opt/broadcast/app/triggers/upgrade.txt"
+      
+      # Run upgrade with version parameter
+      /opt/broadcast/broadcast.sh upgrade "$target_version"
+      
+      echo "[$(date)] upgrade to version $target_version completed"
+    else
+      # Fallback to standard upgrade for invalid/empty version content
+      echo "[$(date)] upgrade triggered (fallback mode - invalid or empty version content: '$trigger_content')"
+      
+      # Remove the upgrade.txt file
+      rm "/opt/broadcast/app/triggers/upgrade.txt"
+      
+      # Run standard upgrade without version
+      /opt/broadcast/broadcast.sh upgrade
+      
+      echo "[$(date)] upgrade completed (fallback mode)"
+    fi
   fi
 
   if [ -f "/opt/broadcast/app/triggers/domains.txt" ]; then

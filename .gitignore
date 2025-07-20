@@ -10,3 +10,6 @@ logs/*
 db/postgres-data
 ssl/*
 CLAUDE.md
+REVIEW.md
+tests/fixtures/*
+tests/.tmp*

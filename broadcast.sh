@@ -25,6 +25,7 @@ function includeDependencies() {
   source "${current_dir}/scripts/backup.sh"
   source "${current_dir}/scripts/restore.sh"
   source "${current_dir}/scripts/upgrade.sh"
+  source "${current_dir}/scripts/downgrade.sh"
   source "${current_dir}/scripts/monitor.sh"
   source "${current_dir}/scripts/trigger.sh"
   source "${current_dir}/scripts/update.sh"
@@ -32,12 +33,15 @@ function includeDependencies() {
 }
 
 function display_help() {
-  echo "Usage: $0 {install|update|upgrade|restart|stop|start|backup|restore|help|monitor|trigger}"
+  echo "Usage: $0 {install|update|upgrade|downgrade|restart|stop|start|backup|restore|help|monitor|trigger}"
   echo
   echo "Commands:"
   echo "  install          Install Broadcast onto a fresh Ubuntu server"
   echo "  update           Update Broadcast scripts"
-  echo "  upgrade          Upgrade Broadcast images and restart the system"
+  echo "  upgrade [version] Upgrade Broadcast images and restart the system"
+  echo "                   Optional version parameter (e.g., upgrade 1.2.3)"
+  echo "  downgrade <version> Downgrade Broadcast to a specific version"
+  echo "                     Requires version parameter (e.g., downgrade 1.2.0)"
   echo "  restart          Reboot Broadcast services"
   echo "  stop             Stop Broadcast services"
   echo "  start            Start Broadcast services"
@@ -62,18 +66,31 @@ function check_and_set_safe_directory() {
   fi
 }
 
+function set_docker_image() {
+  local version="${1:-latest}"
+  
+  # Architecture detection
+  if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+    local arch_suffix="-arm"
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:${version}" > .image
+    echo "TARGETARCH=arm64" >> .image
+  else
+    local arch_suffix=""
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:${version}" > .image
+  fi
+  
+  # Track current version deployment state
+  echo "${version}" > .current_version
+  
+  echo "[$(date)] Set Docker image to version: ${version} (architecture: $(uname -m))"
+}
+
 main() {
   current_dir=$(getCurrentDir)
   includeDependencies
 
-  # Stupid Docker image when cross compiled does not work even when compiling on
-  # Mac M processors, Intel processes!
-  if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
-    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:latest" > .image
-    echo "TARGETARCH=arm64" >> .image
-  else
-    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:latest" > .image
-  fi
+  # Set Docker image to latest version for installation
+  set_docker_image "latest"
 
   if [ $# -eq 0 ] || [ "$1" = "install" ]; then
     display_logo
@@ -97,7 +114,21 @@ main() {
       install
       ;;
     upgrade)
-      upgrade
+      if [ $# -gt 1 ]; then
+        # Pass version parameter if provided
+        upgrade "$2"
+      else
+        # Standard upgrade without version
+        upgrade
+      fi
+      ;;
+    downgrade)
+      if [ $# -lt 2 ]; then
+        echo "Error: Target version is required for downgrade"
+        echo "Usage: $0 downgrade <version>"
+        exit 1
+      fi
+      downgrade "$2"
       ;;
     update)
       update

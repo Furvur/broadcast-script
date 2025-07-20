@@ -14,6 +14,12 @@ function monitor() {
     disk_free_percent=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
     disk_free_percent=$(echo "100 - $disk_free_percent" | bc)
 
+    # Get current version
+    current_version="unknown"
+    if [ -f "/opt/broadcast/.current_version" ]; then
+        current_version=$(cat /opt/broadcast/.current_version)
+    fi
+
     # Create JSON output
     json_output=$(cat <<EOF
 {
@@ -24,7 +30,8 @@ function monitor() {
     "memory_free_percent": $mem_free_percent,
     "disk_space_total": $disk_total,
     "disk_space_used": $disk_used,
-    "disk_space_free_percent": $disk_free_percent
+    "disk_space_free_percent": $disk_free_percent,
+    "current_version": "$current_version"
 }
 EOF
 )

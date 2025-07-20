@@ -152,3 +152,76 @@ load_registry_info() {
     return 1
   fi
 }
+
+# Version validation helpers for semantic version format checking
+validate_semantic_version() {
+  local version="$1"
+  if [ -z "$version" ]; then
+    return 1
+  fi
+  
+  # Check semantic version format: x.y.z with optional pre-release and build metadata
+  if echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)?(\+[a-zA-Z0-9\.-]+)?$'; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+get_current_version() {
+  if [ -f "/opt/broadcast/.current_version" ]; then
+    cat /opt/broadcast/.current_version
+  else
+    echo "unknown"
+  fi
+}
+
+compare_versions() {
+  local version1="$1"
+  local version2="$2"
+  
+  # Convert versions to comparable format by removing pre-release and build metadata
+  local v1_clean=$(echo "$version1" | sed 's/[-+].*//')
+  local v2_clean=$(echo "$version2" | sed 's/[-+].*//')
+  
+  # Use sort -V for version comparison
+  if printf '%s\n%s\n' "$v1_clean" "$v2_clean" | sort -V -C; then
+    if [ "$v1_clean" = "$v2_clean" ]; then
+      echo "equal"
+    else
+      echo "less"
+    fi
+  else
+    echo "greater"
+  fi
+}
+
+# Version history tracking for upgrade/downgrade audit trail
+log_version_change() {
+  local operation="$1"    # "upgrade" or "downgrade"
+  local from_version="$2"
+  local to_version="$3"
+  local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+  local history_file="/opt/broadcast/.version_history"
+  
+  # Create history file if it doesn't exist
+  if [ ! -f "$history_file" ]; then
+    echo "# Broadcast Version History" > "$history_file"
+    echo "# Format: TIMESTAMP | OPERATION | FROM_VERSION | TO_VERSION" >> "$history_file"
+  fi
+  
+  # Append version change to history
+  echo "$timestamp | $operation | $from_version | $to_version" >> "$history_file"
+  
+  # Keep only the last 100 entries to prevent file from growing too large
+  tail -102 "$history_file" > "${history_file}.tmp" && mv "${history_file}.tmp" "$history_file"
+}
+
+get_version_history() {
+  local history_file="/opt/broadcast/.version_history"
+  if [ -f "$history_file" ]; then
+    cat "$history_file"
+  else
+    echo "No version history available"
+  fi
+}

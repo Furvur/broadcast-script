@@ -14,7 +14,14 @@ function create_database_backup_file() {
   echo -e "\e[33mStarting backup...\e[0m"
 
   timestamp=$(date +%Y-%m-%d-%H-%M-%S)
-  backup_file_name="broadcast-backup-$timestamp"
+  
+  # Get current version if available
+  current_version="unknown"
+  if [ -f "/opt/broadcast/.current_version" ]; then
+    current_version=$(cat /opt/broadcast/.current_version)
+  fi
+  
+  backup_file_name="broadcast-backup-v${current_version}-$timestamp"
 
   # We only backup the primary database. The queue and cache databases are ephemeral and considered unimportant for restoration.
   cd /opt/broadcast
@@ -27,7 +34,7 @@ function create_database_backup_file() {
   # Remove all but the most recent backup file
   cd /opt/broadcast/db/backups && ls -t broadcast-backup-*.tar.gz | tail -n +2 | xargs -r rm --
 
-  echo -e "\e[32mBackup successfully archived with timestamp: $timestamp\e[0m"
+  echo -e "\e[32mBackup successfully archived: v${current_version} with timestamp: $timestamp\e[0m"
 }
 
 function install_s3cmd() {
