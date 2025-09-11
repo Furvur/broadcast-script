@@ -270,11 +270,7 @@ change_installation_domain() {
   
   echo -e "\e[33mProcessing domain change...\e[0m"
   
-  # Stop services first
-  echo -e "\e[33mStopping Broadcast services...\e[0m"
-  systemctl stop broadcast
-  
-  # Update domain files
+  # Update domain files first (while services are running)
   echo "$new_domain" > "$current_domain_file"
   echo -e "\e[32mUpdated primary domain file (.domain).\e[0m"
   
@@ -304,7 +300,7 @@ change_installation_domain() {
     echo -e "\e[31mWarning: Could not find app/.env file.\e[0m"
   fi
   
-  # Update Rails database directly
+  # Update Rails database directly (while services are still running)
   echo -e "\e[33mUpdating database record...\e[0m"
   su - broadcast -c "cd /opt/broadcast && docker compose exec app bin/rails runner \"Installation.first&.update!(hosted_domain: '$new_domain')\""
   echo -e "\e[32mDatabase record updated.\e[0m"
@@ -312,9 +308,9 @@ change_installation_domain() {
   # Ensure proper ownership
   chown -R broadcast:broadcast /opt/broadcast
   
-  # Start services
-  echo -e "\e[33mStarting Broadcast services...\e[0m"
-  systemctl start broadcast
+  # Restart services to pick up new SSL certificates and configuration
+  echo -e "\e[33mRestarting Broadcast services to apply changes...\e[0m"
+  systemctl restart broadcast
   
   # Log the change
   local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
