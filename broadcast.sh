@@ -33,25 +33,26 @@ function includeDependencies() {
 }
 
 function display_help() {
-  echo "Usage: $0 {install|update|upgrade|downgrade|restart|stop|start|backup|restore|help|monitor|trigger}"
+  echo "Usage: $0 {install|update|upgrade|downgrade|restart|stop|start|backup|restore|help|monitor|trigger|change_installation_domain}"
   echo
   echo "Commands:"
-  echo "  install          Install Broadcast onto a fresh Ubuntu server"
-  echo "  update           Update Broadcast scripts"
-  echo "  upgrade [version] Upgrade Broadcast images and restart the system"
-  echo "                   Optional version parameter (e.g., upgrade 1.2.3)"
-  echo "  downgrade <version> Downgrade Broadcast to a specific version"
-  echo "                     Requires version parameter (e.g., downgrade 1.2.0)"
-  echo "  restart          Reboot Broadcast services"
-  echo "  stop             Stop Broadcast services"
-  echo "  start            Start Broadcast services"
-  echo "  backup           Backup Broadcast database and files to S3"
-  echo "  backup_database  Backup Broadcast primary database"
-  echo "  restore          Restore Broadcast primary database"
-  echo "  help             Display this help message"
-  echo "  monitor          Automated feedback of host metrics to the dashboard"
-  echo "  trigger          Automated check on triggers from Broadcast to the host"
-  echo "  validate_license Validate the license for Broadcast"
+  echo "  install                  Install Broadcast onto a fresh Ubuntu server"
+  echo "  update                   Update Broadcast scripts"
+  echo "  upgrade [version]        Upgrade Broadcast images and restart the system"
+  echo "                          Optional version parameter (e.g., upgrade 1.2.3)"
+  echo "  downgrade <version>      Downgrade Broadcast to a specific version"
+  echo "                          Requires version parameter (e.g., downgrade 1.2.0)"
+  echo "  restart                  Reboot Broadcast services"
+  echo "  stop                     Stop Broadcast services"
+  echo "  start                    Start Broadcast services"
+  echo "  backup                   Backup Broadcast database and files to S3"
+  echo "  backup_database          Backup Broadcast primary database"
+  echo "  restore                  Restore Broadcast primary database"
+  echo "  help                     Display this help message"
+  echo "  monitor                  Automated feedback of host metrics to the dashboard"
+  echo "  trigger                  Automated check on triggers from Broadcast to the host"
+  echo "  validate_license         Validate the license for Broadcast"
+  echo "  change_installation_domain Change the primary installation domain"
 }
 
 function set_safe_directory() {
@@ -160,6 +161,9 @@ main() {
     validate_license)
       validate_license
       ;;
+    change_installation_domain)
+      change_installation_domain
+      ;;
     logs)
       if [ $# -lt 2 ]; then
         echo "Usage: $0 logs <app|job|db>"
@@ -171,7 +175,7 @@ main() {
       display_help
       ;;
     *)
-      echo "Usage: $0 {install|upgrade|restart|stop|start|backup|backup_database|restore|help}"
+      echo "Usage: $0 {install|upgrade|restart|stop|start|backup|backup_database|restore|help|change_installation_domain}"
       exit 1
       ;;
   esac

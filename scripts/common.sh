@@ -225,3 +225,105 @@ get_version_history() {
     echo "No version history available"
   fi
 }
+
+change_installation_domain() {
+  local current_domain_file="/opt/broadcast/.domain"
+  local current_domain=""
+  
+  if [ -f "$current_domain_file" ]; then
+    current_domain=$(cat "$current_domain_file")
+    echo -e "\e[34mCurrent installation domain: $current_domain\e[0m"
+  else
+    echo -e "\e[33mNo current domain found.\e[0m"
+  fi
+  
+  echo
+  echo -e "\e[32mEnter the new installation domain (e.g., broadcast.newdomain.com): \e[0m"
+  read -r new_domain
+  
+  # Validate domain input
+  if [ -z "$new_domain" ]; then
+    echo -e "\e[31mError: Domain cannot be empty.\e[0m"
+    return 1
+  fi
+  
+  # Basic domain format validation
+  if ! echo "$new_domain" | grep -qE '^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'; then
+    echo -e "\e[31mError: Invalid domain format.\e[0m"
+    return 1
+  fi
+  
+  # Confirm the change
+  echo
+  echo -e "\e[33mYou are about to change the installation domain from:\e[0m"
+  echo -e "\e[31m  FROM: $current_domain\e[0m"
+  echo -e "\e[32m  TO:   $new_domain\e[0m"
+  echo
+  echo -e "\e[31mWARNING: This will restart all Broadcast services and update SSL certificates.\e[0m"
+  echo -e "\e[33mAre you sure you want to proceed? (y/N): \e[0m"
+  read -r confirm
+  
+  if [[ ! $confirm =~ ^[Yy]$ ]]; then
+    echo -e "\e[33mOperation cancelled.\e[0m"
+    return 0
+  fi
+  
+  echo -e "\e[33mProcessing domain change...\e[0m"
+  
+  # Stop services first
+  echo -e "\e[33mStopping Broadcast services...\e[0m"
+  systemctl stop broadcast
+  
+  # Update domain files
+  echo "$new_domain" > "$current_domain_file"
+  echo -e "\e[32mUpdated primary domain file (.domain).\e[0m"
+  
+  # Update .other_domains if it exists (remove the old primary domain if present)
+  local other_domains_file="/opt/broadcast/.other_domains"
+  if [ -f "$other_domains_file" ]; then
+    # Remove the old domain from .other_domains if it exists there
+    grep -v "^$current_domain$" "$other_domains_file" > "$other_domains_file.tmp" && mv "$other_domains_file.tmp" "$other_domains_file"
+    echo -e "\e[32mUpdated other domains file (.other_domains).\e[0m"
+  fi
+  
+  # Update TLS_DOMAIN in app/.env
+  local app_env_file="/opt/broadcast/app/.env"
+  if [ -f "$app_env_file" ]; then
+    # Check if there are additional domains
+    if [ -f "$other_domains_file" ] && [ -s "$other_domains_file" ]; then
+      local other_domains=$(cat "$other_domains_file" | tr '\n' ',' | sed 's/,$//')
+      # Update TLS_DOMAIN with new primary domain plus other domains
+      sed -i "s/^TLS_DOMAIN=.*/TLS_DOMAIN=$new_domain,$other_domains/" "$app_env_file"
+      echo -e "\e[32mUpdated TLS_DOMAIN with primary + additional domains.\e[0m"
+    else
+      # Update TLS_DOMAIN with just the new domain
+      sed -i "s/^TLS_DOMAIN=.*/TLS_DOMAIN=$new_domain/" "$app_env_file"
+      echo -e "\e[32mUpdated TLS_DOMAIN with primary domain only.\e[0m"
+    fi
+  else
+    echo -e "\e[31mWarning: Could not find app/.env file.\e[0m"
+  fi
+  
+  # Update Rails database directly
+  echo -e "\e[33mUpdating database record...\e[0m"
+  su - broadcast -c "cd /opt/broadcast && docker compose exec app bin/rails runner \"Installation.first&.update!(hosted_domain: '$new_domain')\""
+  echo -e "\e[32mDatabase record updated.\e[0m"
+  
+  # Ensure proper ownership
+  chown -R broadcast:broadcast /opt/broadcast
+  
+  # Start services
+  echo -e "\e[33mStarting Broadcast services...\e[0m"
+  systemctl start broadcast
+  
+  # Log the change
+  local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+  echo "$timestamp | domain_change | $current_domain | $new_domain" >> /opt/broadcast/.domain_history
+  
+  echo
+  echo -e "\e[32mInstallation domain successfully changed to: $new_domain\e[0m"
+  echo -e "\e[33mServices are restarting. New SSL certificates will be generated automatically.\e[0m"
+  echo -e "\e[33mPlease ensure your DNS points to this server before accessing the new domain.\e[0m"
+  
+  return 0
+}
