@@ -1,26 +1,32 @@
 function upgrade() {
   local target_version="${1:-}"
-  local current_version=$(get_current_version)
-  
+
   if [ -n "$target_version" ]; then
     echo -e "\e[33mStopping Broadcast service for version-specific upgrade to $target_version...\e[0m"
   else
-    target_version="latest"
     echo -e "\e[33mStopping Broadcast service...\e[0m"
   fi
   systemctl stop broadcast
 
-  echo -e "\e[33mRunning Broadcast update script...\e[0m"
+  echo -e "\e[33mUpdating Broadcast scripts...\e[0m"
   /opt/broadcast/broadcast.sh update
 
-  # Set docker image for specific version if provided
-  if [ -n "$target_version" ]; then
-    echo -e "\e[33mSetting Docker image for version $target_version...\e[0m"
-    set_docker_image "$target_version"
-  else
-    echo -e "\e[33mSetting Docker image to latest...\e[0m"
-    set_docker_image "latest"
+  # Re-exec with updated scripts to ensure new code runs
+  echo -e "\e[33mReloading with updated scripts...\e[0m"
+  exec /opt/broadcast/broadcast.sh _upgrade_continue "$target_version"
+}
+
+function _upgrade_continue() {
+  local target_version="${1:-}"
+  local current_version=$(get_current_version)
+
+  if [ -z "$target_version" ]; then
+    target_version="latest"
   fi
+
+  # Set docker image for target version
+  echo -e "\e[33mSetting Docker image for version $target_version...\e[0m"
+  set_docker_image "$target_version"
 
   # Clean up unused images
   echo -e "\e[33mCleaning up unused Docker images...\e[0m"

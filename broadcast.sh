@@ -131,6 +131,14 @@ main() {
       fi
       downgrade "$2"
       ;;
+    _upgrade_continue)
+      # Internal command: called after scripts update to run with new code
+      _upgrade_continue "${2:-}"
+      ;;
+    _downgrade_continue)
+      # Internal command: called after scripts update to run with new code
+      _downgrade_continue "${2:-}"
+      ;;
     update)
       update
       ;;
