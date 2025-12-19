@@ -27,8 +27,8 @@ function upgrade() {
   docker image prune -f
 
   # Upgrade the Broadcast containers
-  echo -e "\e[33mLogging into Broadcast registry...\e[0m"
-  su - broadcast -c 'cd /opt/broadcast && docker compose pull'
+  echo -e "\e[33mPulling Broadcast containers for version $target_version...\e[0m"
+  su - broadcast -c 'cd /opt/broadcast && source .image && docker compose pull'
 
   echo -e "\e[33mRestarting Broadcast service...\e[0m"
   systemctl start broadcast

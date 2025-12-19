@@ -69,29 +69,26 @@ function check_and_set_safe_directory() {
 
 function set_docker_image() {
   local version="${1:-latest}"
-  
+  local image_file="/opt/broadcast/.image"
+  local version_file="/opt/broadcast/.current_version"
+
   # Architecture detection
   if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
-    local arch_suffix="-arm"
-    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:${version}" > .image
-    echo "TARGETARCH=arm64" >> .image
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:${version}" > "$image_file"
+    echo "TARGETARCH=arm64" >> "$image_file"
   else
-    local arch_suffix=""
-    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:${version}" > .image
+    echo "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:${version}" > "$image_file"
   fi
-  
+
   # Track current version deployment state
-  echo "${version}" > .current_version
-  
+  echo "${version}" > "$version_file"
+
   echo "[$(date)] Set Docker image to version: ${version} (architecture: $(uname -m))"
 }
 
 main() {
   current_dir=$(getCurrentDir)
   includeDependencies
-
-  # Set Docker image to latest version for installation
-  set_docker_image "latest"
 
   if [ $# -eq 0 ] || [ "$1" = "install" ]; then
     display_logo
@@ -112,6 +109,9 @@ main() {
 
   case "$1" in
     install)
+      # Only set docker image to latest for fresh installs
+      # Upgrade/downgrade commands set specific versions
+      set_docker_image "latest"
       install
       ;;
     upgrade)
