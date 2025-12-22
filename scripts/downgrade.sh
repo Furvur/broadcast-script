@@ -47,7 +47,7 @@ function _downgrade_continue() {
 
   # Pull target version containers
   echo -e "\e[33mPulling Broadcast containers for version $target_version...\e[0m"
-  su - broadcast -c 'cd /opt/broadcast && source .image && docker compose pull'
+  su - broadcast -c 'cd /opt/broadcast && set -a && source .image && set +a && docker compose pull'
 
   # Restart services
   echo -e "\e[33mRestarting Broadcast service...\e[0m"
