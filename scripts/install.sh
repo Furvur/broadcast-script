@@ -141,7 +141,7 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
   # Pull docker images and start the service as the broadcast user
   sudo -u broadcast bash << EOF
     cd /opt/broadcast
-    docker compose pull
+    set -a && source .image && set +a && docker compose pull
     sudo systemctl start broadcast.service
 EOF
 
