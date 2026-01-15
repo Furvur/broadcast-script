@@ -59,4 +59,7 @@ function trigger() {
     rm "/opt/broadcast/app/triggers/backup-db.txt"
     /opt/broadcast/broadcast.sh backup_database
   fi
+
+  # Log streaming (continuous trigger - checked every minute)
+  check_log_streaming_trigger
 }

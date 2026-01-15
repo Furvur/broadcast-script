@@ -10,6 +10,7 @@ services:
     volumes:
       - /home/replace-with-your-user/broadcast/app/storage:/rails/storage
       - /home/replace-with-your-user/broadcast/app/uploads:/rails/uploads
+      - /home/replace-with-your-user/broadcast/logs:/rails/logs
     ports:
       - "127.0.0.1:3000:3000" # Overrides default ports
     networks:
