@@ -83,6 +83,24 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo apt-get update
 
+  # Read domain from configuration file
+  if [ ! -f /opt/broadcast/.domain ]; then
+    echo
+    echo -e "\e[31mError: Domain configuration file not found.\e[0m"
+    echo
+    echo "The file /opt/broadcast/.domain is required but does not exist."
+    echo "This can happen if the installation was interrupted or run non-interactively."
+    echo
+    echo "To fix this, create the file manually with your domain:"
+    echo
+    echo -e "  \e[33mecho 'your-domain.example.com' > /opt/broadcast/.domain\e[0m"
+    echo
+    echo "Then run the install command again:"
+    echo
+    echo -e "  \e[33m./broadcast.sh install\e[0m"
+    echo
+    exit 1
+  fi
   domain=$(cat /opt/broadcast/.domain)
 
   # Check if app/.env exists, create if not
