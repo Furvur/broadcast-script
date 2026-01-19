@@ -60,6 +60,14 @@ function trigger() {
     /opt/broadcast/broadcast.sh backup_database
   fi
 
+  if [ -f "/opt/broadcast/app/triggers/restart-jobs.txt" ]; then
+    echo "[$(date)] restart-jobs triggered, restarting job container"
+    rm "/opt/broadcast/app/triggers/restart-jobs.txt"
+    cd /opt/broadcast
+    docker compose restart job
+    echo "[$(date)] job container restarted"
+  fi
+
   # Log streaming (continuous trigger - checked every minute)
   check_log_streaming_trigger
 }
