@@ -67,7 +67,4 @@ function trigger() {
     docker compose restart job
     echo "[$(date)] job container restarted"
   fi
-
-  # Log streaming (continuous trigger - checked every minute)
-  check_log_streaming_trigger
 }

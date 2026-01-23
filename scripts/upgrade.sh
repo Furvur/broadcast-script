@@ -24,6 +24,23 @@ function _upgrade_continue() {
     target_version="latest"
   fi
 
+  # Install log streaming trigger watcher if not present (for upgrades from older versions)
+  if ! systemctl is-enabled broadcast-logs-watcher &>/dev/null; then
+    echo -e "\e[33mInstalling log streaming trigger watcher...\e[0m"
+
+    # Install inotify-tools if not present
+    if ! command -v inotifywait &>/dev/null; then
+      apt-get install -y inotify-tools
+    fi
+
+    # Install and enable the systemd service
+    cp /opt/broadcast/scripts/broadcast-logs-watcher.service /etc/systemd/system/
+    systemctl daemon-reload
+    systemctl enable broadcast-logs-watcher
+    systemctl start broadcast-logs-watcher
+    echo -e "\e[32mLog streaming trigger watcher installed.\e[0m"
+  fi
+
   # Set docker image for target version
   echo -e "\e[33mSetting Docker image for version $target_version...\e[0m"
   set_docker_image "$target_version"

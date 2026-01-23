@@ -1,0 +1,16 @@
+[Unit]
+Description=Broadcast Log Streaming Trigger Watcher
+Documentation=https://github.com/furvur/broadcast
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/opt/broadcast/scripts/logs-trigger-watcher.sh
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/broadcast/logs/logs-watcher.log
+StandardError=append:/opt/broadcast/logs/logs-watcher.log
+
+[Install]
+WantedBy=multi-user.target

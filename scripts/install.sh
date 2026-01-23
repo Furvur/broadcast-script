@@ -174,6 +174,17 @@ EOF
   echo -e "\e[33mSetting permissions (double checking)...\e[0m"
   sudo chown -R broadcast:broadcast /opt/broadcast
 
+  # Install inotify-tools for log streaming trigger watcher
+  echo -e "\e[33mInstalling inotify-tools for log streaming...\e[0m"
+  sudo apt-get install -y inotify-tools
+
+  # Set up the log streaming trigger watcher service
+  echo -e "\e[33mSetting up log streaming trigger watcher service...\e[0m"
+  sudo cp /opt/broadcast/scripts/broadcast-logs-watcher.service /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable broadcast-logs-watcher
+  sudo systemctl start broadcast-logs-watcher
+
   # Install logrotate
   sudo apt-get install -y logrotate
 
