@@ -27,8 +27,15 @@ function create_database_backup_file() {
   cd /opt/broadcast
   sudo docker compose exec postgres pg_dump -U broadcast -Fc broadcast_primary_production > /opt/broadcast/db/backups/temp-backup.dump
   sudo mv /opt/broadcast/db/backups/temp-backup.dump /opt/broadcast/db/backups/$backup_file_name.dump
-  sudo tar -czvf /opt/broadcast/db/backups/$backup_file_name.tar.gz /opt/broadcast/db/backups/$backup_file_name.dump
-  sudo rm /opt/broadcast/db/backups/$backup_file_name.dump
+
+  # Create VERSION file with backup metadata
+  echo "$current_version" > /opt/broadcast/db/backups/VERSION
+
+  sudo tar -czvf /opt/broadcast/db/backups/$backup_file_name.tar.gz \
+    -C /opt/broadcast/db/backups \
+    $backup_file_name.dump \
+    VERSION
+  sudo rm /opt/broadcast/db/backups/$backup_file_name.dump /opt/broadcast/db/backups/VERSION
   sudo chown -R broadcast:broadcast /opt/broadcast/db/backups
 
   # Remove all but the most recent backup file
