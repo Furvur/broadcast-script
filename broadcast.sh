@@ -158,7 +158,7 @@ main() {
       backup_database
       ;;
     restore)
-      restore
+      restore "$2"
       ;;
     monitor)
       monitor
