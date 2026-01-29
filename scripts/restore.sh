@@ -104,6 +104,10 @@ function restore() {
   # Clean up temp directory
   rm -rf "$temp_dir"
 
+  # Run database migrations to handle schema differences between versions
+  echo -e "\e[34mRunning database migrations...\e[0m"
+  docker compose run --rm app bin/rails db:migrate
+
   # Restart all services
   echo -e "\e[34mRestarting Broadcast services...\e[0m"
   systemctl start broadcast
