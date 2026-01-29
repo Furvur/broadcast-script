@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: broadcast-postgres-test
+    environment:
+      POSTGRES_USER: broadcast
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: broadcast_primary_production
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./fixtures:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U broadcast"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

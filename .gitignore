@@ -12,4 +12,5 @@ ssl/*
 CLAUDE.md
 REVIEW.md
 tests/fixtures/*
+!tests/fixtures/seed_data.sql
 tests/.tmp*
