@@ -115,33 +115,56 @@ validate_license() {
   local license_key=$(cat "$license_file")
   local domain=$(cat "$domain_file")
 
-  http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "{\"key\":\"$license_key\", \"domain\":\"$domain\"}" https://sendbroadcast.net/license/check)
+  # Single curl call capturing both HTTP status code and response body
+  local tmpfile=$(mktemp)
+  http_code=$(curl -s -w "%{http_code}" -o "$tmpfile" -X POST -H "Content-Type: application/json" -d "{\"key\":\"$license_key\", \"domain\":\"$domain\"}" https://sendbroadcast.net/license/check)
+  response=$(cat "$tmpfile")
+  rm -f "$tmpfile"
 
   if [ "$http_code" = "401" ]; then
     echo -e "\e[31mInvalid license key. Aborted.\e[0m"
     return 1
   fi
 
-  response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"key\":\"$license_key\", \"domain\":\"$domain\"}" https://sendbroadcast.net/license/check)
+  if [ "$http_code" != "200" ]; then
+    echo -e "\e[31mUnexpected HTTP response ($http_code) during license validation. Aborted.\e[0m"
+    return 1
+  fi
+
+  # Validate that response is valid JSON before parsing
+  if ! echo "$response" | jq empty 2>/dev/null; then
+    echo -e "\e[31mInvalid response from license server. Aborted.\e[0m"
+    return 1
+  fi
 
   # Parse the JSON response
   local registry_url=$(echo "$response" | jq -r '.registry_url')
+  local registry_login=$(echo "$response" | jq -r '.registry_login')
+  local registry_password=$(echo "$response" | jq -r '.registry_password')
 
-  if [ "$registry_url" != "null" ]; then
-    echo -e "\e[32mLicense key valid!\e[0m"
-
-    local registry_login=$(echo "$response" | jq -r '.registry_login')
-    local registry_password=$(echo "$response" | jq -r '.registry_password')
-
-    echo "BROADCAST_REGISTRY_URL=$registry_url" >> /opt/broadcast/.env
-    echo "BROADCAST_REGISTRY_LOGIN=$registry_login" >> /opt/broadcast/.env
-    echo "BROADCAST_REGISTRY_PASSWORD=$registry_password" >> /opt/broadcast/.env
-
-    return 0
-  else
+  # Validate all required fields are present and non-empty
+  if [ -z "$registry_url" ] || [ "$registry_url" = "null" ]; then
     echo -e "\e[31mUnexpected error during license validation. Aborted.\e[0m"
     return 1
   fi
+
+  if [ -z "$registry_login" ] || [ "$registry_login" = "null" ]; then
+    echo -e "\e[31mMissing registry login in license response. Aborted.\e[0m"
+    return 1
+  fi
+
+  if [ -z "$registry_password" ] || [ "$registry_password" = "null" ]; then
+    echo -e "\e[31mMissing registry password in license response. Aborted.\e[0m"
+    return 1
+  fi
+
+  echo -e "\e[32mLicense key valid!\e[0m"
+
+  echo "BROADCAST_REGISTRY_URL=$registry_url" >> /opt/broadcast/.env
+  echo "BROADCAST_REGISTRY_LOGIN=$registry_login" >> /opt/broadcast/.env
+  echo "BROADCAST_REGISTRY_PASSWORD=$registry_password" >> /opt/broadcast/.env
+
+  return 0
 }
 
 load_registry_info() {
