@@ -1,4 +1,11 @@
 function trigger() {
+  # Ensure BROADCAST_MANAGED is set in app/.env for managed installations
+  local app_env="/opt/broadcast/app/.env"
+  if [ -f "$app_env" ] && ! grep -q "^BROADCAST_MANAGED=" "$app_env"; then
+    echo "BROADCAST_MANAGED=true" >> "$app_env"
+    echo "[$(date)] Added BROADCAST_MANAGED=true to app/.env"
+  fi
+
   # Check if the upgrade.txt file exists in the triggers directory
   if [ -f "/opt/broadcast/app/triggers/upgrade.txt" ]; then
     # Read the content of the upgrade.txt file

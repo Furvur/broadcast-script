@@ -130,6 +130,7 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
 
     license=$(cat /opt/broadcast/.license)
     echo "LICENSE_KEY=$license" >> /opt/broadcast/app/.env
+    echo "BROADCAST_MANAGED=true" >> /opt/broadcast/app/.env
 
     # Set some db environment variables
     echo "POSTGRES_USER=$postgres_user" >> /opt/broadcast/db/.env
