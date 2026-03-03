@@ -53,6 +53,7 @@ function display_help() {
   echo "  trigger                  Automated check on triggers from Broadcast to the host"
   echo "  validate_license         Validate the license for Broadcast"
   echo "  change_installation_domain Change the primary installation domain"
+  echo "  generate_encryption_keys Generate Active Record encryption keys"
 }
 
 function set_safe_directory() {
@@ -171,6 +172,9 @@ main() {
       ;;
     change_installation_domain)
       change_installation_domain
+      ;;
+    generate_encryption_keys)
+      generate_encryption_keys
       ;;
     logs)
       if [ $# -lt 2 ]; then

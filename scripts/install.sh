@@ -131,6 +131,9 @@ Unattended-Upgrade::Automatic-Reboot "false";' | sudo tee /etc/apt/apt.conf.d/20
     license=$(cat /opt/broadcast/.license)
     echo "LICENSE_KEY=$license" >> /opt/broadcast/app/.env
     echo "BROADCAST_MANAGED=true" >> /opt/broadcast/app/.env
+    echo "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$(openssl rand -hex 16)" >> /opt/broadcast/app/.env
+    echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$(openssl rand -hex 16)" >> /opt/broadcast/app/.env
+    echo "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$(openssl rand -hex 16)" >> /opt/broadcast/app/.env
 
     # Set some db environment variables
     echo "POSTGRES_USER=$postgres_user" >> /opt/broadcast/db/.env

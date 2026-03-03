@@ -41,6 +41,15 @@ function _upgrade_continue() {
     echo -e "\e[32mLog streaming trigger watcher installed.\e[0m"
   fi
 
+  # Add Active Record encryption keys if missing (required for encrypted fields like API keys)
+  if ! grep -q "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY" /opt/broadcast/app/.env 2>/dev/null; then
+    echo -e "\e[33mAdding Active Record encryption keys...\e[0m"
+    echo "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$(openssl rand -hex 16)" >> /opt/broadcast/app/.env
+    echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$(openssl rand -hex 16)" >> /opt/broadcast/app/.env
+    echo "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$(openssl rand -hex 16)" >> /opt/broadcast/app/.env
+    echo -e "\e[32mActive Record encryption keys added.\e[0m"
+  fi
+
   # Set docker image for target version
   echo -e "\e[33mSetting Docker image for version $target_version...\e[0m"
   set_docker_image "$target_version"

@@ -249,6 +249,31 @@ get_version_history() {
   fi
 }
 
+generate_encryption_keys() {
+  local app_env_file="/opt/broadcast/app/.env"
+
+  if [ ! -f "$app_env_file" ]; then
+    echo -e "\e[31mError: app/.env not found. Is Broadcast installed?\e[0m"
+    return 1
+  fi
+
+  if grep -q "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY" "$app_env_file" 2>/dev/null; then
+    echo -e "\e[32mActive Record encryption keys already exist in app/.env.\e[0m"
+    echo -e "\e[33mTo regenerate, remove the existing keys from app/.env first.\e[0m"
+    return 0
+  fi
+
+  echo -e "\e[33mGenerating Active Record encryption keys...\e[0m"
+  echo "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$(openssl rand -hex 16)" >> "$app_env_file"
+  echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$(openssl rand -hex 16)" >> "$app_env_file"
+  echo "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$(openssl rand -hex 16)" >> "$app_env_file"
+
+  chown broadcast:broadcast "$app_env_file"
+
+  echo -e "\e[32mEncryption keys generated and added to app/.env.\e[0m"
+  echo -e "\e[33mRestart Broadcast for changes to take effect: ./broadcast.sh restart\e[0m"
+}
+
 change_installation_domain() {
   local current_domain_file="/opt/broadcast/.domain"
   local current_domain=""
