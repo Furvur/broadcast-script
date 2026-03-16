@@ -177,6 +177,8 @@ EOF
 
   echo -e "\e[33mSetting permissions (double checking)...\e[0m"
   sudo chown -R broadcast:broadcast /opt/broadcast
+  # Ensure db/init-scripts is readable by the postgres container (runs as uid 70)
+  sudo chmod -R o+rX /opt/broadcast/db/init-scripts
 
   # Install inotify-tools for log streaming trigger watcher
   echo -e "\e[33mInstalling inotify-tools for log streaming...\e[0m"
