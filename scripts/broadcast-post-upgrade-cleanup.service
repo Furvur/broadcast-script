@@ -1,0 +1,9 @@
+[Unit]
+Description=Broadcast Post-Upgrade Docker Image Cleanup
+After=broadcast.service docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/broadcast/scripts/post-upgrade-cleanup.sh
+StandardOutput=append:/opt/broadcast/logs/post-upgrade-cleanup.log
+StandardError=append:/opt/broadcast/logs/post-upgrade-cleanup.log

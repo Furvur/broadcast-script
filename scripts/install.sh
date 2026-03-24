@@ -187,6 +187,8 @@ EOF
   # Set up the log streaming trigger watcher service
   echo -e "\e[33mSetting up log streaming trigger watcher service...\e[0m"
   sudo cp /opt/broadcast/scripts/broadcast-logs-watcher.service /etc/systemd/system/
+  sudo cp /opt/broadcast/scripts/broadcast-post-upgrade-cleanup.service /etc/systemd/system/
+  sudo chmod +x /opt/broadcast/scripts/post-upgrade-cleanup.sh
   sudo systemctl daemon-reload
   sudo systemctl enable broadcast-logs-watcher
   sudo systemctl start broadcast-logs-watcher

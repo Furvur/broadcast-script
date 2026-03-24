@@ -24,6 +24,15 @@ function _upgrade_continue() {
     target_version="latest"
   fi
 
+  # Install post-upgrade cleanup service if not present (for upgrades from older versions)
+  if [ ! -f /etc/systemd/system/broadcast-post-upgrade-cleanup.service ]; then
+    echo -e "\e[33mInstalling post-upgrade Docker image cleanup service...\e[0m"
+    cp /opt/broadcast/scripts/broadcast-post-upgrade-cleanup.service /etc/systemd/system/
+    chmod +x /opt/broadcast/scripts/post-upgrade-cleanup.sh
+    systemctl daemon-reload
+    echo -e "\e[32mPost-upgrade cleanup service installed.\e[0m"
+  fi
+
   # Install log streaming trigger watcher if not present (for upgrades from older versions)
   if ! systemctl is-enabled broadcast-logs-watcher &>/dev/null; then
     echo -e "\e[33mInstalling log streaming trigger watcher...\e[0m"
@@ -54,16 +63,16 @@ function _upgrade_continue() {
   echo -e "\e[33mSetting Docker image for version $target_version...\e[0m"
   set_docker_image "$target_version"
 
-  # Clean up unused images
-  echo -e "\e[33mCleaning up unused Docker images...\e[0m"
-  docker image prune -f
-
   # Upgrade the Broadcast containers
   echo -e "\e[33mPulling Broadcast containers for version $target_version...\e[0m"
   su - broadcast -c 'cd /opt/broadcast && set -a && source .image && set +a && docker compose pull'
 
   echo -e "\e[33mRestarting Broadcast service...\e[0m"
   systemctl start broadcast
+
+  # Schedule post-upgrade image cleanup (runs after containers stabilize)
+  echo -e "\e[33mScheduling post-upgrade Docker image cleanup...\e[0m"
+  systemctl start broadcast-post-upgrade-cleanup.service --no-block
 
   # Log version change to history
   log_version_change "upgrade" "$current_version" "$target_version"
