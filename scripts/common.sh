@@ -5,7 +5,7 @@ display_logo() {
   echo -e "\e[90m | |_) | | | (_) | (_| | (_| | (_| (_| \__ \ |_ \e[0m"
   echo -e "\e[90m |____/|_|  \___/ \__,_|\__,_|\___\__,_|___/\__|\e[0m"
   echo -e "\e[90m                                                \e[0m"
-  echo -e "\e[90m (c) Copyright 2024, Furvur, Inc.\e[0m"
+  echo -e "\e[90m (c) Copyright 2024-2026, Furvur, Inc.\e[0m"
   echo -e "\e[90m Go to https://sendbroadcast.net for documentation and support.\e[0m"
   echo
 }
