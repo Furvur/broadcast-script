@@ -15,7 +15,7 @@ This script installs the Broadcast script on a Linux server. It sets up the nece
 Run the following commands as root:
 
 ```bash
-rm -rf /opt/broadcast && git clone https://github.com/Furvur/broadcast-script.git /opt/broadcast && cd /opt/broadcast && chmod +x broadcast.sh && ./broadcast.sh install
+rm -rf /opt/broadcast && git clone https://github.com/send-broadcast/broadcast-script.git /opt/broadcast && cd /opt/broadcast && chmod +x broadcast.sh && ./broadcast.sh install
 ```
 
 ## License

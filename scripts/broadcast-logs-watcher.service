@@ -1,6 +1,6 @@
 [Unit]
 Description=Broadcast Log Streaming Trigger Watcher
-Documentation=https://github.com/furvur/broadcast
+Documentation=https://github.com/send-broadcast/broadcast-script
 After=network.target docker.service
 Requires=docker.service
 
