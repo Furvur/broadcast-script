@@ -2,11 +2,13 @@
 
 # Smoke Test for Broadcast Installation
 #
-# Spins up a disposable Ubuntu 24.04 VM, runs the real installer,
-# and verifies the system boots successfully.
+# Spins up disposable Ubuntu VMs (24.04 and 26.04 by default), runs the
+# real installer on each, and verifies the system boots successfully.
 #
 # Usage:
-#   ./tests/smoke/test_multipass_smoke.sh                 # Basic smoke test
+#   ./tests/smoke/test_multipass_smoke.sh                 # Basic smoke test (both versions)
+#   ./tests/smoke/test_multipass_smoke.sh --ubuntu 24.04  # Test only 24.04
+#   ./tests/smoke/test_multipass_smoke.sh --ubuntu 26.04  # Test only 26.04
 #   ./tests/smoke/test_multipass_smoke.sh --no-cleanup    # Keep VM for debugging
 #   ./tests/smoke/test_multipass_smoke.sh --test-reboot   # Verify reboot recovery
 #   ./tests/smoke/test_multipass_smoke.sh --verbose       # Show all command output
@@ -15,7 +17,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
-VAGRANT_DIR="$SCRIPT_DIR/.vagrant-smoke"
+
+# Ubuntu versions to exercise. Override with --ubuntu VERSION.
+DEFAULT_UBUNTU_VERSIONS=("24.04" "26.04")
+UBUNTU_VERSIONS=("${DEFAULT_UBUNTU_VERSIONS[@]}")
+
+# Per-iteration state (set inside the version loop)
+UBUNTU_VERSION=""
+VAGRANT_DIR=""
 
 # CLI flags
 FLAG_NO_CLEANUP=false
@@ -29,10 +38,16 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Test counters
+# Test counters (aggregated across all Ubuntu versions)
 TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
+
+# Per-version results — parallel arrays
+VERSION_NAMES=()
+VERSION_RUN=()
+VERSION_PASSED=()
+VERSION_FAILED=()
 
 #######################
 # Helper Functions
@@ -158,13 +173,18 @@ fetch_registry_credentials() {
 #######################
 
 cleanup() {
+    # No active VM yet (e.g. credential check failed before the loop started)
+    if [ -z "$VAGRANT_DIR" ] || [ ! -d "$VAGRANT_DIR" ]; then
+        return
+    fi
+
     if [ "$FLAG_NO_CLEANUP" = true ]; then
         log_warn "Skipping cleanup (--no-cleanup). VM is still running in $VAGRANT_DIR"
         log_warn "To clean up manually: cd $VAGRANT_DIR && vagrant destroy -f"
         return
     fi
 
-    log_info "Cleaning up VM..."
+    log_info "Cleaning up VM (Ubuntu ${UBUNTU_VERSION})..."
     cd "$VAGRANT_DIR" && vagrant destroy -f 2>/dev/null || true
     rm -rf "$VAGRANT_DIR"
 }
@@ -174,7 +194,7 @@ cleanup() {
 #######################
 
 setup_vm() {
-    log_info "=== Phase 1: Setup VM ==="
+    log_info "=== Phase 1: Setup VM (Ubuntu ${UBUNTU_VERSION}) ==="
 
     # Check vagrant is installed
     if ! command -v vagrant &>/dev/null; then
@@ -189,7 +209,7 @@ setup_vm() {
     # Generate Vagrantfile
     cat > "$VAGRANT_DIR/Vagrantfile" <<'VAGRANTEOF'
 Vagrant.configure("2") do |config|
-  config.vm.box = "bento/ubuntu-24.04"
+  config.vm.box = "bento/ubuntu-UBUNTU_VERSION_PLACEHOLDER"
   config.vm.hostname = "broadcast-smoke-test"
 
   config.vm.provider "vmware_desktop" do |v|
@@ -212,11 +232,12 @@ Vagrant.configure("2") do |config|
 end
 VAGRANTEOF
 
-    # Replace placeholder with actual repo path
+    # Replace placeholders with actual values
     sed -i '' "s|BROADCAST_REPO_PATH|${PROJECT_ROOT}|" "$VAGRANT_DIR/Vagrantfile"
+    sed -i '' "s|UBUNTU_VERSION_PLACEHOLDER|${UBUNTU_VERSION}|" "$VAGRANT_DIR/Vagrantfile"
 
     # Launch VM
-    log_info "Launching Ubuntu 24.04 VM..."
+    log_info "Launching Ubuntu ${UBUNTU_VERSION} VM..."
     cd "$VAGRANT_DIR" && vagrant up
 
     log_info "VM is ready."
@@ -485,14 +506,27 @@ parse_args() {
             --verbose)
                 FLAG_VERBOSE=true
                 ;;
+            --ubuntu)
+                shift
+                if [ $# -eq 0 ]; then
+                    echo "Error: --ubuntu requires a version (e.g. 24.04, 26.04, or 'all')"
+                    exit 1
+                fi
+                if [ "$1" = "all" ]; then
+                    UBUNTU_VERSIONS=("${DEFAULT_UBUNTU_VERSIONS[@]}")
+                else
+                    UBUNTU_VERSIONS=("$1")
+                fi
+                ;;
             --help|-h)
                 echo "Usage: $0 [OPTIONS]"
                 echo ""
                 echo "Options:"
-                echo "  --no-cleanup    Keep VM after test for debugging"
-                echo "  --test-reboot   Also verify services survive a reboot"
-                echo "  --verbose       Show all command output"
-                echo "  --help          Show this help message"
+                echo "  --ubuntu VERSION  Ubuntu version to test: 24.04, 26.04, or all (default: all)"
+                echo "  --no-cleanup      Keep VM after test for debugging"
+                echo "  --test-reboot     Also verify services survive a reboot"
+                echo "  --verbose         Show all command output"
+                echo "  --help            Show this help message"
                 exit 0
                 ;;
             *)
@@ -508,33 +542,77 @@ parse_args() {
 # Main
 #######################
 
-main() {
-    parse_args "$@"
+run_for_version() {
+    local version="$1"
+
+    UBUNTU_VERSION="$version"
+    VAGRANT_DIR="$SCRIPT_DIR/.vagrant-smoke-${version}"
+
+    local prev_run=$TESTS_RUN
+    local prev_passed=$TESTS_PASSED
+    local prev_failed=$TESTS_FAILED
 
     echo ""
     echo "=========================================="
-    echo "  Broadcast Smoke Test (Vagrant)"
+    echo "  Ubuntu ${version}"
     echo "=========================================="
     echo ""
 
-    trap cleanup EXIT
-
-    load_credentials
     setup_vm
     prepare_installation
     run_installer
-    run_health_checks "Phase 4"
+    run_health_checks "Phase 4 (Ubuntu ${version})"
     display_inspection
 
     if [ "$FLAG_TEST_REBOOT" = true ]; then
         test_reboot_recovery
     fi
 
+    # Tear down this version's VM before moving on so disk/VMware resources free up
+    cleanup
+    VAGRANT_DIR=""
+
+    VERSION_NAMES+=("$version")
+    VERSION_RUN+=("$((TESTS_RUN - prev_run))")
+    VERSION_PASSED+=("$((TESTS_PASSED - prev_passed))")
+    VERSION_FAILED+=("$((TESTS_FAILED - prev_failed))")
+}
+
+main() {
+    parse_args "$@"
+
+    echo ""
+    echo "=========================================="
+    echo "  Broadcast Smoke Test (Vagrant)"
+    echo "  Ubuntu versions: ${UBUNTU_VERSIONS[*]}"
+    echo "=========================================="
+    echo ""
+
+    trap cleanup EXIT
+
+    load_credentials
+
+    for version in "${UBUNTU_VERSIONS[@]}"; do
+        run_for_version "$version"
+    done
+
     # Summary
     echo ""
     echo "=========================================="
     echo "  Test Summary"
     echo "=========================================="
+    echo ""
+    for i in "${!VERSION_NAMES[@]}"; do
+        local name="${VERSION_NAMES[$i]}"
+        local run="${VERSION_RUN[$i]}"
+        local passed="${VERSION_PASSED[$i]}"
+        local failed="${VERSION_FAILED[$i]}"
+        if [ "$failed" -eq 0 ]; then
+            echo -e "  Ubuntu ${name}: ${GREEN}${passed}/${run} passed${NC}"
+        else
+            echo -e "  Ubuntu ${name}: ${RED}${failed} failed${NC} (${passed}/${run} passed)"
+        fi
+    done
     echo ""
     echo "Tests run:    $TESTS_RUN"
     echo -e "Tests passed: ${GREEN}$TESTS_PASSED${NC}"

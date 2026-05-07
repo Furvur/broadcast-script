@@ -1,6 +1,6 @@
 # Smoke Test
 
-End-to-end smoke test that installs Broadcast from scratch on a disposable Ubuntu 24.04 VM using [Vagrant](https://www.vagrantup.com/) + VMware. Catches issues that unit/integration tests can't: Docker image problems, systemd service failures, database initialization issues, etc.
+End-to-end smoke test that installs Broadcast from scratch on disposable Ubuntu VMs (24.04 and 26.04 by default) using [Vagrant](https://www.vagrantup.com/) + VMware. Catches issues that unit/integration tests can't: Docker image problems, systemd service failures, database initialization issues, package availability across Ubuntu releases, etc.
 
 ## Prerequisites
 
@@ -29,8 +29,12 @@ export BROADCAST_LICENSE_KEY=your-license-key
 ## Usage
 
 ```bash
-# Basic smoke test
+# Basic smoke test (runs against Ubuntu 24.04 and 26.04 sequentially)
 ./tests/smoke/test_multipass_smoke.sh
+
+# Test only one Ubuntu version
+./tests/smoke/test_multipass_smoke.sh --ubuntu 24.04
+./tests/smoke/test_multipass_smoke.sh --ubuntu 26.04
 
 # Keep VM after test for debugging
 ./tests/smoke/test_multipass_smoke.sh --no-cleanup
@@ -42,28 +46,34 @@ export BROADCAST_LICENSE_KEY=your-license-key
 ./tests/smoke/test_multipass_smoke.sh --verbose
 
 # Combine flags
-./tests/smoke/test_multipass_smoke.sh --test-reboot --verbose --no-cleanup
+./tests/smoke/test_multipass_smoke.sh --ubuntu 26.04 --test-reboot --verbose --no-cleanup
 ```
 
 ## What It Does
 
-1. **Setup VM** - Launches Ubuntu 24.04 VM via Vagrant + VMware (2 CPUs, 2G RAM)
+For each Ubuntu version selected:
+
+1. **Setup VM** - Launches Ubuntu VM via Vagrant + VMware (2 CPUs, 2G RAM)
 2. **Prepare Installation** - Copies repo into VM, pre-creates config files to bypass interactive prompts
 3. **Run Installer** - Executes `./broadcast.sh install`
 4. **Health Checks** - Verifies containers, database, HTTP endpoints, systemd service, cron jobs
 5. **Reboot Recovery** (optional) - Restarts VM and re-runs health checks
 6. **Cleanup** - Destroys VM (unless `--no-cleanup`)
 
+The summary at the end reports per-version pass/fail counts in addition to the overall total.
+
 ## Expected Runtime
 
-~3-5 minutes (VM boot ~30s, installer ~2-3min, health checks ~30s).
+~3-5 minutes per Ubuntu version (VM boot ~30s, installer ~2-3min, health checks ~30s). Running both 24.04 and 26.04 sequentially takes roughly twice that.
 
 ## Debugging
+
+Each Ubuntu version uses its own working directory: `tests/smoke/.vagrant-smoke-24.04`, `tests/smoke/.vagrant-smoke-26.04`, etc.
 
 Use `--no-cleanup` to keep the VM, then:
 
 ```bash
-cd tests/smoke/.vagrant-smoke
+cd tests/smoke/.vagrant-smoke-26.04   # or -24.04
 vagrant ssh
 # You're now inside the VM
 sudo su -
@@ -76,7 +86,7 @@ cat app/.env
 To manually clean up:
 
 ```bash
-cd tests/smoke/.vagrant-smoke && vagrant destroy -f
+cd tests/smoke/.vagrant-smoke-26.04 && vagrant destroy -f
 ```
 
 ## Architecture Notes
