@@ -11,7 +11,11 @@ release cadence begins, dated version sections will be promoted from this list.
 ## [Unreleased]
 
 ### Added
+- Smoke test now clones the canonical remote (`https://github.com/send-broadcast/broadcast-script.git`) by default so it exercises exactly what end users install; pass `--local` to fall back to copying the local working tree.
 - Smoke test now runs against Ubuntu 24.04 and 26.04 by default, with a `--ubuntu VERSION` flag to filter to one and per-version pass/fail reporting in the summary.
+
+### Changed
+- Smoke test switched from VMware Fusion to QEMU using HashiCorp-published `cloud-image/ubuntu-{24.04,26.04}` boxes — single trustworthy publisher across both Ubuntu releases, no commercial-license dependency, and 26.04 is available today (bento has not published a 26.04 box yet). Setup now requires `brew install qemu && vagrant plugin install vagrant-qemu` instead of the VMware plugin chain.
 - Vagrant-based end-to-end smoke test (`tests/smoke/test_multipass_smoke.sh`) that boots a disposable VM, runs the real installer, and verifies containers, HTTP endpoints, systemd, and cron.
 - Auto-prune of unused Docker images after upgrade, gated by a stability check so a freshly broken image is not reaped.
 - Auto-migration of installations from the legacy `broadcast` registry namespace to `send-broadcast`.

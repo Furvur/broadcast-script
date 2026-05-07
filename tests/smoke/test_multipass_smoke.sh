@@ -5,10 +5,16 @@
 # Spins up disposable Ubuntu VMs (24.04 and 26.04 by default), runs the
 # real installer on each, and verifies the system boots successfully.
 #
+# By default the VM clones the canonical repo from
+# https://github.com/send-broadcast/broadcast-script.git, matching what
+# real end users do. Use --local to test the current working tree
+# (uncommitted changes included).
+#
 # Usage:
 #   ./tests/smoke/test_multipass_smoke.sh                 # Basic smoke test (both versions)
 #   ./tests/smoke/test_multipass_smoke.sh --ubuntu 24.04  # Test only 24.04
 #   ./tests/smoke/test_multipass_smoke.sh --ubuntu 26.04  # Test only 26.04
+#   ./tests/smoke/test_multipass_smoke.sh --local         # Test local working tree instead of cloning remote
 #   ./tests/smoke/test_multipass_smoke.sh --no-cleanup    # Keep VM for debugging
 #   ./tests/smoke/test_multipass_smoke.sh --test-reboot   # Verify reboot recovery
 #   ./tests/smoke/test_multipass_smoke.sh --verbose       # Show all command output
@@ -17,6 +23,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
+# Canonical repo URL — the test clones this by default so it exercises
+# what real end users actually install.
+BROADCAST_REPO_URL="https://github.com/send-broadcast/broadcast-script.git"
 
 # Ubuntu versions to exercise. Override with --ubuntu VERSION.
 DEFAULT_UBUNTU_VERSIONS=("24.04" "26.04")
@@ -30,6 +40,7 @@ VAGRANT_DIR=""
 FLAG_NO_CLEANUP=false
 FLAG_TEST_REBOOT=false
 FLAG_VERBOSE=false
+FLAG_LOCAL=false
 
 # Colors
 RED='\033[0;31m'
@@ -206,39 +217,98 @@ setup_vm() {
     # Create Vagrant working directory
     mkdir -p "$VAGRANT_DIR"
 
-    # Generate Vagrantfile
-    cat > "$VAGRANT_DIR/Vagrantfile" <<'VAGRANTEOF'
+    # Detect host arch and pick QEMU machine flags. macOS uses Apple's HVF
+    # accelerator on both Apple Silicon (aarch64) and Intel (x86_64).
+    local host_arch qemu_arch qemu_machine qemu_ssh_port
+    host_arch=$(uname -m)
+    if [ "$host_arch" = "arm64" ] || [ "$host_arch" = "aarch64" ]; then
+        qemu_arch="aarch64"
+        qemu_machine="virt,accel=hvf,highmem=on"
+    else
+        qemu_arch="x86_64"
+        qemu_machine="q35,accel=hvf"
+    fi
+
+    # Derive a per-version SSH port so back-to-back runs don't collide on the
+    # vagrant-qemu default (50022). Major version offset: 24.04 -> 50024, 26.04 -> 50026.
+    qemu_ssh_port=$((50000 + ${UBUNTU_VERSION%%.*}))
+
+    # Generate Vagrantfile — provisioning differs depending on whether we are
+    # cloning the canonical remote (default) or copying the local working tree.
+    if [ "$FLAG_LOCAL" = true ]; then
+        log_info "Repo source: local working tree ($PROJECT_ROOT)"
+        cat > "$VAGRANT_DIR/Vagrantfile" <<'VAGRANTEOF'
 Vagrant.configure("2") do |config|
-  config.vm.box = "bento/ubuntu-UBUNTU_VERSION_PLACEHOLDER"
+  config.vm.box = "cloud-image/ubuntu-UBUNTU_VERSION_PLACEHOLDER"
   config.vm.hostname = "broadcast-smoke-test"
 
-  config.vm.provider "vmware_desktop" do |v|
-    v.vmx["numvcpus"] = "2"
-    v.vmx["memsize"] = "2048"
+  config.vm.provider "qemu" do |qe|
+    qe.arch = "QEMU_ARCH_PLACEHOLDER"
+    qe.machine = "QEMU_MACHINE_PLACEHOLDER"
+    qe.cpu = "host"
+    qe.smp = "cpus=2,sockets=1,cores=2,threads=1"
+    qe.memory = "2048M"
+    qe.net_device = "virtio-net-pci"
+    qe.ssh_port = "QEMU_SSH_PORT_PLACEHOLDER"
   end
 
-  config.vm.provider "virtualbox" do |v|
-    v.memory = 2048
-    v.cpus = 2
-  end
+  # Disable the default /vagrant share — QEMU does not support virtfs by default
+  config.vm.synced_folder ".", "/vagrant", disabled: true
 
-  # Share repo to a temp location, then copy to /opt/broadcast in provisioning
-  config.vm.synced_folder "BROADCAST_REPO_PATH", "/tmp/broadcast-repo"
+  # Share local working tree via rsync (cloud-image boxes have rsync preinstalled)
+  config.vm.synced_folder "BROADCAST_REPO_PATH", "/tmp/broadcast-repo", type: "rsync"
 
   config.vm.provision "shell", inline: <<-SHELL
+    rm -rf /opt/broadcast
     mkdir -p /opt/broadcast
     cp -a /tmp/broadcast-repo/. /opt/broadcast/
   SHELL
 end
 VAGRANTEOF
+        sed -i '' "s|BROADCAST_REPO_PATH|${PROJECT_ROOT}|" "$VAGRANT_DIR/Vagrantfile"
+    else
+        log_info "Repo source: ${BROADCAST_REPO_URL}"
+        cat > "$VAGRANT_DIR/Vagrantfile" <<'VAGRANTEOF'
+Vagrant.configure("2") do |config|
+  config.vm.box = "cloud-image/ubuntu-UBUNTU_VERSION_PLACEHOLDER"
+  config.vm.hostname = "broadcast-smoke-test"
 
-    # Replace placeholders with actual values
-    sed -i '' "s|BROADCAST_REPO_PATH|${PROJECT_ROOT}|" "$VAGRANT_DIR/Vagrantfile"
+  config.vm.provider "qemu" do |qe|
+    qe.arch = "QEMU_ARCH_PLACEHOLDER"
+    qe.machine = "QEMU_MACHINE_PLACEHOLDER"
+    qe.cpu = "host"
+    qe.smp = "cpus=2,sockets=1,cores=2,threads=1"
+    qe.memory = "2048M"
+    qe.net_device = "virtio-net-pci"
+    qe.ssh_port = "QEMU_SSH_PORT_PLACEHOLDER"
+  end
+
+  # Disable the default /vagrant share — QEMU does not support virtfs by default
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  # Clone the canonical repo — matches what real end users install
+  config.vm.provision "shell", inline: <<-SHELL
+    set -e
+    if ! command -v git >/dev/null 2>&1; then
+      apt-get update -qq
+      apt-get install -y -qq git
+    fi
+    rm -rf /opt/broadcast
+    git clone BROADCAST_REPO_URL_PLACEHOLDER /opt/broadcast
+  SHELL
+end
+VAGRANTEOF
+        sed -i '' "s|BROADCAST_REPO_URL_PLACEHOLDER|${BROADCAST_REPO_URL}|" "$VAGRANT_DIR/Vagrantfile"
+    fi
+
     sed -i '' "s|UBUNTU_VERSION_PLACEHOLDER|${UBUNTU_VERSION}|" "$VAGRANT_DIR/Vagrantfile"
+    sed -i '' "s|QEMU_ARCH_PLACEHOLDER|${qemu_arch}|" "$VAGRANT_DIR/Vagrantfile"
+    sed -i '' "s|QEMU_MACHINE_PLACEHOLDER|${qemu_machine}|" "$VAGRANT_DIR/Vagrantfile"
+    sed -i '' "s|QEMU_SSH_PORT_PLACEHOLDER|${qemu_ssh_port}|" "$VAGRANT_DIR/Vagrantfile"
 
-    # Launch VM
-    log_info "Launching Ubuntu ${UBUNTU_VERSION} VM..."
-    cd "$VAGRANT_DIR" && vagrant up
+    # Launch VM (QEMU provider)
+    log_info "Launching Ubuntu ${UBUNTU_VERSION} VM (qemu/${qemu_arch}, ssh port ${qemu_ssh_port})..."
+    cd "$VAGRANT_DIR" && vagrant up --provider=qemu
 
     log_info "VM is ready."
 }
@@ -506,6 +576,9 @@ parse_args() {
             --verbose)
                 FLAG_VERBOSE=true
                 ;;
+            --local)
+                FLAG_LOCAL=true
+                ;;
             --ubuntu)
                 shift
                 if [ $# -eq 0 ]; then
@@ -523,6 +596,7 @@ parse_args() {
                 echo ""
                 echo "Options:"
                 echo "  --ubuntu VERSION  Ubuntu version to test: 24.04, 26.04, or all (default: all)"
+                echo "  --local           Test the local working tree instead of cloning the canonical remote"
                 echo "  --no-cleanup      Keep VM after test for debugging"
                 echo "  --test-reboot     Also verify services survive a reboot"
                 echo "  --verbose         Show all command output"
@@ -581,10 +655,18 @@ run_for_version() {
 main() {
     parse_args "$@"
 
+    local repo_source
+    if [ "$FLAG_LOCAL" = true ]; then
+        repo_source="local working tree"
+    else
+        repo_source="$BROADCAST_REPO_URL"
+    fi
+
     echo ""
     echo "=========================================="
     echo "  Broadcast Smoke Test (Vagrant)"
     echo "  Ubuntu versions: ${UBUNTU_VERSIONS[*]}"
+    echo "  Repo source:     ${repo_source}"
     echo "=========================================="
     echo ""
 
