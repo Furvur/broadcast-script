@@ -16,4 +16,4 @@ tests/fixtures/*
 !tests/fixtures/seed_data.sql
 tests/.tmp*
 tests/smoke/.smoke-test.env
-tests/smoke/.vagrant-smoke
+tests/smoke/.vagrant-smoke*
