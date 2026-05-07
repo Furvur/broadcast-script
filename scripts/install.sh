@@ -57,7 +57,7 @@ function install() {
   sudo timedatectl set-timezone UTC
 
   # Install network time protocol
-  sudo apt-get install ntp -y
+  sudo apt-get install chrony -y
 
   # Set up unattended upgrades without user interaction
   sudo apt-get install unattended-upgrades -y
