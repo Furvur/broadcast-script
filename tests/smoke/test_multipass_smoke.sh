@@ -39,6 +39,7 @@ VAGRANT_DIR=""
 # CLI flags
 FLAG_NO_CLEANUP=false
 FLAG_TEST_REBOOT=false
+FLAG_TEST_UPGRADE=false
 FLAG_VERBOSE=false
 FLAG_LOCAL=false
 
@@ -561,6 +562,79 @@ test_reboot_recovery() {
 }
 
 #######################
+# Phase 6: Upgrade-path — watcher restart + log streaming survival
+#######################
+
+# Exercises the two host-side behaviours that plain install/health checks do not:
+#   1. `systemctl restart broadcast-logs-watcher` (what upgrade.sh now runs so a
+#      long-running watcher picks up updated scripts) leaves the watcher healthy.
+#   2. Log streaming survives container recreation — the actual bug fix. We start
+#      streaming via the trigger file, recreate BOTH app and job (so no surviving
+#      `docker logs -f` can mask a broken reattach), and assert application.log
+#      keeps growing. With the old code the streamer's `wait` returned and the
+#      file froze; the supervised reattach loop keeps it live.
+#
+# NOTE: this does not run `broadcast.sh upgrade` itself — that does a `git pull`
+# (update.sh) which reverts /opt/broadcast to the remote before the new code
+# runs, so the real end-to-end upgrade can only be tested once changes are pushed.
+test_upgrade_and_streaming() {
+    log_info "=== Phase 6: Upgrade-path (watcher restart + streaming survival) ==="
+
+    # 1. Watcher restart (the upgrade.sh delivery step) keeps it active + new PID.
+    log_test "broadcast-logs-watcher restarts cleanly and stays active"
+    local pid_before pid_after
+    pid_before=$(vm_exec_root "systemctl show -p MainPID --value broadcast-logs-watcher" | tr -d "[:space:]")
+    vm_exec_root "systemctl restart broadcast-logs-watcher || true"
+    sleep 3
+    pid_after=$(vm_exec_root "systemctl show -p MainPID --value broadcast-logs-watcher" | tr -d "[:space:]")
+    if vm_exec_root "systemctl is-active --quiet broadcast-logs-watcher" && [ "$pid_before" != "$pid_after" ]; then
+        log_success "watcher restarted (PID ${pid_before} -> ${pid_after}) and is active"
+    else
+        log_fail "watcher did not restart cleanly (PID ${pid_before} -> ${pid_after})"
+    fi
+
+    # 2a. Creating the trigger (what Rails does on Start) begins streaming.
+    log_test "creating the trigger starts streaming (application.log populated)"
+    vm_exec_root "date -u +%Y-%m-%dT%H:%M:%SZ > /opt/broadcast/app/triggers/logs-stream.txt"
+    if wait_for_check "application.log populated" \
+        "test -s /opt/broadcast/logs/application.log" 20 3; then
+        log_success "application.log is being written"
+    else
+        log_fail "application.log never populated after trigger created"
+    fi
+
+    # 2b. The core fix: recreate BOTH containers, streaming must keep flowing.
+    log_test "streaming survives container recreation (docker restart app job)"
+    local lines_before
+    lines_before=$(vm_exec_root "wc -l < /opt/broadcast/logs/application.log 2>/dev/null" | tr -d "[:space:]")
+    vm_exec_root "docker restart app job >/dev/null 2>&1"
+    if wait_for_check "application.log grew after restart" \
+        "test \$(wc -l < /opt/broadcast/logs/application.log 2>/dev/null) -gt ${lines_before:-0}" 30 5; then
+        log_success "application.log kept growing after both containers recreated (reattach works)"
+    else
+        log_fail "application.log froze after container recreation (reattach failed)"
+    fi
+
+    # 2c. Removing the trigger stops streaming (reconcile path). First let the
+    # app container become exec-ready again after the 2b recreation, otherwise
+    # check_log_streaming_trigger's volume guard (docker exec app ...) returns
+    # early and defers the stop.
+    wait_for_check "app container exec-ready" "docker exec app test -d /rails/logs" 30 5 || true
+    log_test "removing the trigger stops streaming"
+    vm_exec_root "rm -f /opt/broadcast/app/triggers/logs-stream.txt"
+    if wait_for_check "streaming stopped" \
+        "! test -f /opt/broadcast/logs/.streaming.pid" 20 3; then
+        log_success "streaming stopped after trigger removed"
+    else
+        log_fail "streaming did not stop after trigger removed"
+        log_info "--- diagnostics: watcher log (tail) ---"
+        vm_exec_root "tail -n 25 /opt/broadcast/logs/logs-watcher.log 2>/dev/null"
+        log_info "--- diagnostics: trigger / pid / streamer state ---"
+        vm_exec_root "ls -la /opt/broadcast/app/triggers/ /opt/broadcast/logs/.streaming.pid 2>&1; echo ---; docker ps --format '{{.Names}} {{.Status}}'; echo ---; ps -eo pid,pgid,args | grep -E 'setsid|docker logs' | grep -v grep"
+    fi
+}
+
+#######################
 # Parse CLI Arguments
 #######################
 
@@ -572,6 +646,9 @@ parse_args() {
                 ;;
             --test-reboot)
                 FLAG_TEST_REBOOT=true
+                ;;
+            --test-upgrade)
+                FLAG_TEST_UPGRADE=true
                 ;;
             --verbose)
                 FLAG_VERBOSE=true
@@ -599,6 +676,7 @@ parse_args() {
                 echo "  --local           Test the local working tree instead of cloning the canonical remote"
                 echo "  --no-cleanup      Keep VM after test for debugging"
                 echo "  --test-reboot     Also verify services survive a reboot"
+                echo "  --test-upgrade    Also verify the log-streaming watcher restart + streaming survives container recreation"
                 echo "  --verbose         Show all command output"
                 echo "  --help            Show this help message"
                 exit 0
@@ -640,6 +718,10 @@ run_for_version() {
 
     if [ "$FLAG_TEST_REBOOT" = true ]; then
         test_reboot_recovery
+    fi
+
+    if [ "$FLAG_TEST_UPGRADE" = true ]; then
+        test_upgrade_and_streaming
     fi
 
     # Tear down this version's VM before moving on so disk/VMware resources free up

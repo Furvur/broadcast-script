@@ -127,6 +127,7 @@ run_unit_tests() {
     
     run_test_suite "Framework Test" "$SCRIPT_DIR/simple_test.sh"
     run_test_suite "Version Functions" "$SCRIPT_DIR/unit/test_version_functions.sh"
+    run_test_suite "Log Streaming Functions" "$SCRIPT_DIR/unit/test_logs_streaming.sh"
 }
 
 # Run integration tests

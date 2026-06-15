@@ -50,6 +50,14 @@ function _upgrade_continue() {
     echo -e "\e[32mLog streaming trigger watcher installed.\e[0m"
   fi
 
+  # A long-running watcher holds the old logs.sh / watcher code in memory, so a
+  # git pull of new scripts does not take effect until the service restarts.
+  # Restart it here so an upgrade actually delivers script changes. This is
+  # auxiliary (read-only docker calls only) and must never abort the upgrade,
+  # hence `|| true` under the `set -e` in broadcast.sh.
+  echo -e "\e[33mRestarting log streaming trigger watcher to pick up updated scripts...\e[0m"
+  systemctl restart broadcast-logs-watcher || true
+
   # Add Active Record encryption keys if missing (required for encrypted fields like API keys)
   if ! grep -q "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY" /opt/broadcast/app/.env 2>/dev/null; then
     echo -e "\e[33mAdding Active Record encryption keys...\e[0m"

@@ -33,6 +33,8 @@ release cadence begins, dated version sections will be promoted from this list.
 - Upgrades now pin to specific image version tags rather than pulling `latest`, so a rollback path exists if a bad image ships.
 
 ### Fixed
+- Web UI log streaming now survives container recreation. `docker logs -f` is bound to a container instance and exited silently whenever `app`/`job` were recreated on upgrade, leaving the viewer stuck on "Streaming / 0 lines" with a stale `application.log`. Each follow is now supervised in a re-attach loop, the watcher runs a periodic flock-guarded `check_log_streaming_trigger` reconcile (the function existed but was never called) to self-heal a dead streamer, and the trigger watch now includes `modify`/`close_write` so clicking Start over a lingering trigger re-arms streaming. `start_log_streaming` is idempotent and `stop_log_streaming` kills the whole process group.
+- Upgrades now restart `broadcast-logs-watcher` so updated `logs.sh` / watcher scripts actually take effect — a long-running watcher otherwise keeps the old code in memory across a `git pull` until reboot. Guarded with `|| true` so it can never abort an upgrade.
 - Replaced the removed `ntp` package with `chrony` in the installer so fresh installs succeed on Ubuntu 26.04.
 - License API response is validated before being parsed with `jq`, surfacing a clearer error when the API returns non-JSON or an error body.
 - Database migrations now run automatically after a restore so the app boots against the restored schema.

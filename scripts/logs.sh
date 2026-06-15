@@ -42,15 +42,47 @@ is_streaming_active() {
 }
 
 start_log_streaming() {
+  # Idempotent: never spawn a second streamer on top of a live one. This makes
+  # it safe for the inotify handler, the periodic reconciler, and startup to all
+  # funnel through here.
+  if is_streaming_active; then
+    echo "[$(date)] Log streaming already active, skipping start"
+    return 0
+  fi
+
   echo "[$(date)] Starting log streaming..."
   mkdir -p "$(dirname "$LOGS_OUTPUT")"
 
-  # Start in new process group so we can kill the whole tree
+  # Genuine fresh start: discard any stale output left behind by a streamer that
+  # died (e.g. when the containers were last recreated during an upgrade).
+  : > "$LOGS_OUTPUT"
+
+  # `docker logs -f` is bound to a *container instance* and exits the moment the
+  # container is recreated (upgrade/restart). Supervise each follow in a loop so
+  # streaming re-attaches to the new container instead of silently dying. The
+  # first attach includes recent backlog; reattaches pull only the gap (--since)
+  # to avoid re-dumping the same 100 lines. setsid puts the whole tree in a new
+  # session/process group so stop_log_streaming can kill it cleanly.
+  #
+  # Daemon fd hygiene matters here: the watcher calls this from inside a
+  # flock-guarded reconcile that holds the lock on fd 9. Without `9>&-` the
+  # long-lived streamer would inherit that descriptor and pin the lock for its
+  # entire lifetime, so every later reconcile (stop on trigger removal, periodic
+  # self-heal) would block on flock and silently skip. `</dev/null` likewise
+  # drops the inotify pipe inherited on stdin. Keep both.
   setsid bash -c '
-    docker logs -f --tail=100 --timestamps app 2>&1 | sed "s/^/[web] /" &
-    docker logs -f --tail=100 --timestamps job 2>&1 | sed "s/^/[job] /" &
+    stream_container() {
+      local name="$1" label="$2"
+      docker logs -f --tail=100 --timestamps "$name" 2>&1 | sed "s/^/[$label] /"
+      while true; do
+        sleep 1
+        docker logs -f --since 5s --timestamps "$name" 2>&1 | sed "s/^/[$label] /"
+      done
+    }
+    stream_container app web &
+    stream_container job job &
     wait
-  ' > "$LOGS_OUTPUT" 2>&1 &
+  ' </dev/null >> "$LOGS_OUTPUT" 2>&1 9>&- &
 
   local pid=$!
   echo "$pid" > "$LOGS_PID_FILE"
@@ -63,12 +95,19 @@ stop_log_streaming() {
     echo "[$(date)] Stopping log streaming (PID: $pid)..."
 
     if [ -n "$pid" ]; then
-      # Kill entire process group
-      pkill -TERM -P "$pid" 2>/dev/null
-      kill -TERM "$pid" 2>/dev/null
+      # Kill the entire process group so every descendant dies (the supervisor
+      # loops, the `docker logs` follows, and the `sed` filters). setsid put the
+      # streamer in its own group; resolve the real PGID from the stored pid
+      # rather than assuming it equals the pid (setsid may have forked).
+      local pgid
+      pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+      if [ -n "$pgid" ]; then
+        kill -TERM "-$pgid" 2>/dev/null
+        sleep 1
+        kill -KILL "-$pgid" 2>/dev/null
+      fi
 
-      # Wait briefly, then force kill if needed
-      sleep 1
+      # Fallbacks in case the group is already gone but children linger.
       pkill -KILL -P "$pid" 2>/dev/null
       kill -KILL "$pid" 2>/dev/null
     fi
