@@ -40,8 +40,10 @@ VAGRANT_DIR=""
 FLAG_NO_CLEANUP=false
 FLAG_TEST_REBOOT=false
 FLAG_TEST_UPGRADE=false
+FLAG_TEST_REAL_UPGRADE=false
 FLAG_VERBOSE=false
 FLAG_LOCAL=false
+FROM_REF=""
 
 # Colors
 RED='\033[0;31m'
@@ -321,6 +323,14 @@ VAGRANTEOF
 prepare_installation() {
     log_info "=== Phase 2: Prepare Installation ==="
 
+    # Optionally roll /opt/broadcast back to an older revision so a later
+    # `broadcast.sh upgrade` performs a genuine old->new upgrade (its `git pull`
+    # then advances the scripts). Remote mode only — local mode is not a clone.
+    if [ -n "$FROM_REF" ] && [ "$FLAG_LOCAL" != true ]; then
+        log_info "Resetting /opt/broadcast to base ref ${FROM_REF} for pre-upgrade install..."
+        vm_exec_root "git -C /opt/broadcast reset --hard ${FROM_REF}"
+    fi
+
     # Create required directories
     log_info "Creating required directories..."
     vm_exec_root "mkdir -p /opt/broadcast/{app,db,ssl,logs,logs/cron}"
@@ -574,9 +584,9 @@ test_reboot_recovery() {
 #      keeps growing. With the old code the streamer's `wait` returned and the
 #      file froze; the supervised reattach loop keeps it live.
 #
-# NOTE: this does not run `broadcast.sh upgrade` itself — that does a `git pull`
-# (update.sh) which reverts /opt/broadcast to the remote before the new code
-# runs, so the real end-to-end upgrade can only be tested once changes are pushed.
+# This is the fast behavioural check (no real upgrade). For the genuine
+# `broadcast.sh upgrade` end-to-end path, see test_real_upgrade / --test-upgrade
+# combined with --from-ref.
 test_upgrade_and_streaming() {
     log_info "=== Phase 6: Upgrade-path (watcher restart + streaming survival) ==="
 
@@ -593,7 +603,61 @@ test_upgrade_and_streaming() {
         log_fail "watcher did not restart cleanly (PID ${pid_before} -> ${pid_after})"
     fi
 
-    # 2a. Creating the trigger (what Rails does on Start) begins streaming.
+    _test_streaming_lifecycle
+}
+
+# Phase 7: genuine end-to-end `broadcast.sh upgrade`. The VM was installed at an
+# older ref (--from-ref), so the real upgrade's `git pull` advances the scripts,
+# exercising the production path: update -> _upgrade_continue -> watcher restart
+# -> container restart. Then we re-verify streaming works on the upgraded host.
+test_real_upgrade() {
+    log_info "=== Phase 7: Genuine broadcast.sh upgrade ==="
+
+    local head_before head_after
+    head_before=$(vm_exec_root "git -C /opt/broadcast rev-parse --short HEAD" | tr -d '[:space:]')
+    log_info "Installed (pre-upgrade) script revision: ${head_before}"
+
+    log_test "old watcher is running before upgrade"
+    if vm_exec_root "systemctl is-active --quiet broadcast-logs-watcher"; then
+        log_success "watcher active pre-upgrade"
+    else
+        log_fail "watcher not active pre-upgrade"
+    fi
+
+    log_test "broadcast.sh upgrade completes (exit 0)"
+    if vm_exec_root "cd /opt/broadcast && ./broadcast.sh upgrade"; then
+        log_success "broadcast.sh upgrade exited 0"
+    else
+        log_fail "broadcast.sh upgrade failed"
+    fi
+
+    head_after=$(vm_exec_root "git -C /opt/broadcast rev-parse --short HEAD" | tr -d '[:space:]')
+    log_test "scripts advanced via the upgrade's git pull"
+    if [ -n "$head_after" ] && [ "$head_before" != "$head_after" ]; then
+        log_success "scripts upgraded (${head_before} -> ${head_after})"
+    else
+        log_fail "scripts did not advance (${head_before} -> ${head_after})"
+    fi
+
+    log_test "watcher is active after upgrade"
+    if wait_for_check "watcher active" "systemctl is-active --quiet broadcast-logs-watcher" 12 5; then
+        log_success "watcher active post-upgrade"
+    else
+        log_fail "watcher not active post-upgrade"
+    fi
+
+    # Containers must be healthy again after the upgrade restarted the stack.
+    run_health_checks "Phase 7 (post-upgrade)"
+
+    # The fix itself must work end to end on the freshly-upgraded host.
+    _test_streaming_lifecycle
+}
+
+# Shared streaming lifecycle assertions: start via trigger, survive container
+# recreation (reattach), and stop on trigger removal. Used by both the
+# behavioural (--test-upgrade) and genuine-upgrade (--test-real-upgrade) phases.
+_test_streaming_lifecycle() {
+    # Start streaming the way Rails does — by creating the trigger file.
     log_test "creating the trigger starts streaming (application.log populated)"
     vm_exec_root "date -u +%Y-%m-%dT%H:%M:%SZ > /opt/broadcast/app/triggers/logs-stream.txt"
     if wait_for_check "application.log populated" \
@@ -603,7 +667,8 @@ test_upgrade_and_streaming() {
         log_fail "application.log never populated after trigger created"
     fi
 
-    # 2b. The core fix: recreate BOTH containers, streaming must keep flowing.
+    # The core fix: recreate BOTH containers, streaming must keep flowing (no
+    # surviving `docker logs -f` can mask a broken reattach).
     log_test "streaming survives container recreation (docker restart app job)"
     local lines_before
     lines_before=$(vm_exec_root "wc -l < /opt/broadcast/logs/application.log 2>/dev/null" | tr -d "[:space:]")
@@ -615,10 +680,9 @@ test_upgrade_and_streaming() {
         log_fail "application.log froze after container recreation (reattach failed)"
     fi
 
-    # 2c. Removing the trigger stops streaming (reconcile path). First let the
-    # app container become exec-ready again after the 2b recreation, otherwise
-    # check_log_streaming_trigger's volume guard (docker exec app ...) returns
-    # early and defers the stop.
+    # Removing the trigger stops streaming. First let the app container become
+    # exec-ready again after the recreation, otherwise check_log_streaming_trigger's
+    # volume guard (docker exec app ...) returns early and defers the stop.
     wait_for_check "app container exec-ready" "docker exec app test -d /rails/logs" 30 5 || true
     log_test "removing the trigger stops streaming"
     vm_exec_root "rm -f /opt/broadcast/app/triggers/logs-stream.txt"
@@ -650,6 +714,17 @@ parse_args() {
             --test-upgrade)
                 FLAG_TEST_UPGRADE=true
                 ;;
+            --test-real-upgrade)
+                FLAG_TEST_REAL_UPGRADE=true
+                ;;
+            --from-ref)
+                shift
+                if [ $# -eq 0 ]; then
+                    echo "Error: --from-ref requires a git ref to install before upgrading"
+                    exit 1
+                fi
+                FROM_REF="$1"
+                ;;
             --verbose)
                 FLAG_VERBOSE=true
                 ;;
@@ -677,6 +752,8 @@ parse_args() {
                 echo "  --no-cleanup      Keep VM after test for debugging"
                 echo "  --test-reboot     Also verify services survive a reboot"
                 echo "  --test-upgrade    Also verify the log-streaming watcher restart + streaming survives container recreation"
+                echo "  --test-real-upgrade  Run a genuine 'broadcast.sh upgrade' (use with --from-ref to install an older rev first)"
+                echo "  --from-ref REF    Reset /opt/broadcast to REF before install (remote mode), so an upgrade is genuine old->new"
                 echo "  --verbose         Show all command output"
                 echo "  --help            Show this help message"
                 exit 0
@@ -722,6 +799,10 @@ run_for_version() {
 
     if [ "$FLAG_TEST_UPGRADE" = true ]; then
         test_upgrade_and_streaming
+    fi
+
+    if [ "$FLAG_TEST_REAL_UPGRADE" = true ]; then
+        test_real_upgrade
     fi
 
     # Tear down this version's VM before moving on so disk/VMware resources free up
