@@ -852,16 +852,19 @@ main() {
         local run="${VERSION_RUN[$i]}"
         local passed="${VERSION_PASSED[$i]}"
         local failed="${VERSION_FAILED[$i]}"
+        # log_test counts test sections; log_success/log_fail count individual
+        # checks within them — different units, so label them distinctly
+        # instead of printing nonsense like "13/9 passed".
         if [ "$failed" -eq 0 ]; then
-            echo -e "  Ubuntu ${name}: ${GREEN}${passed}/${run} passed${NC}"
+            echo -e "  Ubuntu ${name}: ${GREEN}${run} tests, ${passed} checks passed${NC}"
         else
-            echo -e "  Ubuntu ${name}: ${RED}${failed} failed${NC} (${passed}/${run} passed)"
+            echo -e "  Ubuntu ${name}: ${RED}${failed} checks failed${NC} (${run} tests, ${passed} checks passed)"
         fi
     done
     echo ""
-    echo "Tests run:    $TESTS_RUN"
-    echo -e "Tests passed: ${GREEN}$TESTS_PASSED${NC}"
-    echo -e "Tests failed: ${RED}$TESTS_FAILED${NC}"
+    echo "Tests run:     $TESTS_RUN"
+    echo -e "Checks passed: ${GREEN}$TESTS_PASSED${NC}"
+    echo -e "Checks failed: ${RED}$TESTS_FAILED${NC}"
     echo ""
 
     if [ $TESTS_FAILED -eq 0 ]; then

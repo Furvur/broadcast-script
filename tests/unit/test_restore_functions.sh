@@ -147,6 +147,33 @@ test_restore_fails_when_archive_has_no_dump() {
     assert_file_not_exists "$APPLY_MARKER" "restore_apply must not run without a dump file"
 }
 
+# restore_apply runs in an || context from restore(), which suppresses set -e.
+# Every docker step must therefore fail explicitly — an unchecked failure falls
+# through to the RESTORE COMPLETE banner with nothing restored.
+test_restore_apply_fails_fast_when_docker_fails() {
+    # Reload the real restore_apply (setup stubbed it out)
+    source "$PROJECT_ROOT/scripts/restore.sh"
+
+    touch "$RESTORE_TEST_ROOT/.image"
+    RESTORE_DUMP_FILE="$RESTORE_TEST_ROOT/fake.dump"
+    touch "$RESTORE_DUMP_FILE"
+
+    # Neutralize host-touching commands; make docker fail
+    systemctl() { return 0; }
+    sleep() { :; }
+    docker() { return 1; }
+
+    local output result=0
+    output=$(restore_apply 2>&1) || result=$?
+
+    assert_equals "1" "$result" "restore_apply must fail when docker fails"
+    if [[ "$output" == *"RESTORE COMPLETE"* ]]; then
+        assert_equals "no completion banner" "RESTORE COMPLETE printed" \
+            "a failed apply must never claim the restore completed"
+    fi
+    unset -f systemctl sleep docker
+}
+
 test_restore_cleans_up_temp_dir() {
     local archive result=0
     archive=$(make_backup_archive "$RESTORE_TEST_ROOT" "1.0.0")
@@ -176,6 +203,7 @@ run_restore_function_tests() {
     run_test "test_restore_rejects_newer_backup_version" test_restore_rejects_newer_backup_version
     run_test "test_restore_allows_older_backup_version" test_restore_allows_older_backup_version
     run_test "test_restore_fails_when_archive_has_no_dump" test_restore_fails_when_archive_has_no_dump
+    run_test "test_restore_apply_fails_fast_when_docker_fails" test_restore_apply_fails_fast_when_docker_fails
     run_test "test_restore_cleans_up_temp_dir" test_restore_cleans_up_temp_dir
 
     local result

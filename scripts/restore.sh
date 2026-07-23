@@ -147,11 +147,24 @@ function restore_apply() {
   # Wait for connections to close
   sleep 3
 
+  # Each step below fails the restore explicitly: this function runs in an ||
+  # context from restore(), which suppresses set -e, so an unchecked failure
+  # would fall through to the RESTORE COMPLETE banner with nothing restored.
+
   # Start just the database container
   echo -e "\e[34mStarting database container...\e[0m"
-  cd "$BROADCAST_ROOT"
-  set -a && . "$BROADCAST_ROOT/.image" && set +a
-  docker compose up -d postgres
+  cd "$BROADCAST_ROOT" || return 1
+  set -a
+  if ! . "$BROADCAST_ROOT/.image"; then
+    set +a
+    echo -e "\e[31mError: could not load $BROADCAST_ROOT/.image\e[0m"
+    return 1
+  fi
+  set +a
+  if ! docker compose up -d postgres; then
+    echo -e "\e[31mError: failed to start the database container\e[0m"
+    return 1
+  fi
 
   # Wait for PostgreSQL to be ready
   echo -e "\e[34mWaiting for database to be ready...\e[0m"
@@ -161,7 +174,10 @@ function restore_apply() {
   # SERVICE is resolved through the compose file — a plain `docker cp` needs
   # the container_name, which has drifted from the script before and aborted
   # a restore midway with services stopped.
-  docker compose cp "$dump_file" postgres:/tmp/restore.dump
+  if ! docker compose cp "$dump_file" postgres:/tmp/restore.dump; then
+    echo -e "\e[31mError: failed to copy the dump into the database container\e[0m"
+    return 1
+  fi
 
   # Run pg_restore
   echo -e "\e[34mRestoring database (this may take a while)...\e[0m"
@@ -185,7 +201,10 @@ function restore_apply() {
 
   # Run database migrations to handle schema differences between versions
   echo -e "\e[34mRunning database migrations...\e[0m"
-  docker compose run --rm app bin/rails db:migrate
+  if ! docker compose run --rm app bin/rails db:migrate; then
+    echo -e "\e[31mError: post-restore database migrations failed\e[0m"
+    return 1
+  fi
 
   # Restart all services
   echo -e "\e[34mRestarting Broadcast services...\e[0m"

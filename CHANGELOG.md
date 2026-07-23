@@ -12,6 +12,7 @@ release cadence begins, dated version sections will be promoted from this list.
 
 ### Fixed
 - `./broadcast.sh restore` no longer aborts midway (with services stopped) on current installs: it copied the dump via `docker cp` to a container named `broadcast-postgres`, but the compose file names the container `postgres`. The copy now goes through `docker compose cp` against the postgres service, which is immune to container-name drift.
+- Restore steps (loading `.image`, starting postgres, copying the dump, post-restore migrations) now fail the restore explicitly with a clear error instead of falling through — a failed step can no longer end in a "RESTORE COMPLETE" banner with nothing restored.
 
 ### Added
 - `./broadcast.sh restore <file> --yes` (or `BROADCAST_ASSUME_YES=1`) skips the interactive confirmation so restores can run non-interactively from automation.
