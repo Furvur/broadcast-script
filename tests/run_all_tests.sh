@@ -128,6 +128,7 @@ run_unit_tests() {
     run_test_suite "Framework Test" "$SCRIPT_DIR/simple_test.sh"
     run_test_suite "Version Functions" "$SCRIPT_DIR/unit/test_version_functions.sh"
     run_test_suite "Log Streaming Functions" "$SCRIPT_DIR/unit/test_logs_streaming.sh"
+    run_test_suite "Restore Functions" "$SCRIPT_DIR/unit/test_restore_functions.sh"
 }
 
 # Run integration tests
@@ -138,6 +139,15 @@ run_integration_tests() {
     echo
     
     run_test_suite "Workflow Patterns" "$SCRIPT_DIR/integration/test_workflow_patterns.sh"
+
+    # Backup/restore runs real pg_dump/pg_restore against a disposable
+    # PostgreSQL container, so it needs a working Docker daemon.
+    if docker info >/dev/null 2>&1; then
+        run_test_suite "Backup/Restore (Docker)" "$SCRIPT_DIR/integration/test_backup_restore.sh"
+    else
+        echo -e "${YELLOW}⊘ SKIP: Backup/Restore (Docker) — Docker daemon not available${NC}"
+        echo
+    fi
 }
 
 # Run mock tests

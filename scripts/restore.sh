@@ -29,54 +29,41 @@ function compare_versions() {
   return 0
 }
 
-function restore() {
+# Root of the Broadcast installation. Overridable so the restore pipeline can
+# be exercised against a scratch directory in tests.
+BROADCAST_ROOT="${BROADCAST_ROOT:-/opt/broadcast}"
+
+# Locate a backup file by name, checking the standard locations in order.
+# Echoes the resolved path on success; error messages go to stderr.
+function restore_find_backup_file() {
   local backup_file="$1"
 
-  # Validate argument
-  if [ -z "$backup_file" ]; then
-    echo -e "\e[31mError: No backup file specified\e[0m"
-    echo -e "Usage: ./broadcast.sh restore <backup-file.tar.gz>"
-    echo -e "Example: ./broadcast.sh restore broadcast-backup-v2.0.0-2026-01-28-14-30-00.tar.gz"
-    return 1
-  fi
-
-  # Find the backup file (check multiple locations)
-  local backup_path=""
-  if [ -f "/opt/broadcast/$backup_file" ]; then
-    backup_path="/opt/broadcast/$backup_file"
-  elif [ -f "/opt/broadcast/db/backups/$backup_file" ]; then
-    backup_path="/opt/broadcast/db/backups/$backup_file"
+  if [ -f "$BROADCAST_ROOT/$backup_file" ]; then
+    echo "$BROADCAST_ROOT/$backup_file"
+  elif [ -f "$BROADCAST_ROOT/db/backups/$backup_file" ]; then
+    echo "$BROADCAST_ROOT/db/backups/$backup_file"
   elif [ -f "$backup_file" ]; then
-    backup_path="$backup_file"
+    echo "$backup_file"
   else
-    echo -e "\e[31mError: Backup file not found: $backup_file\e[0m"
-    echo -e "Searched locations:"
-    echo -e "  - /opt/broadcast/$backup_file"
-    echo -e "  - /opt/broadcast/db/backups/$backup_file"
-    echo -e "  - $backup_file"
+    echo -e "\e[31mError: Backup file not found: $backup_file\e[0m" >&2
+    echo -e "Searched locations:" >&2
+    echo -e "  - $BROADCAST_ROOT/$backup_file" >&2
+    echo -e "  - $BROADCAST_ROOT/db/backups/$backup_file" >&2
+    echo -e "  - $backup_file" >&2
     return 1
   fi
+}
 
-  echo -e "\e[34mFound backup file: $backup_path\e[0m"
+# Extract the archive, enforce the version gate, and locate the dump file.
+# On success sets RESTORE_TEMP_DIR and RESTORE_DUMP_FILE; on failure cleans up
+# the temp directory and returns 1.
+function restore_prepare() {
+  local backup_path="$1"
 
-  # Confirm with user
-  echo -e "\e[33m"
-  echo "╔════════════════════════════════════════════════════════════════╗"
-  echo "║                         WARNING                                 ║"
-  echo "║  This will REPLACE ALL DATA in your database.                  ║"
-  echo "║  This action cannot be undone.                                 ║"
-  echo "╚════════════════════════════════════════════════════════════════╝"
-  echo -e "\e[0m"
-  read -p "Are you sure you want to restore from this backup? (yes/no): " confirm
-
-  if [ "$confirm" != "yes" ]; then
-    echo -e "\e[33mRestore cancelled.\e[0m"
-    return 0
-  fi
-
-  # Create temp directory for extraction
-  local temp_dir="/tmp/broadcast-restore-$$"
-  mkdir -p "$temp_dir"
+  RESTORE_TEMP_DIR="/tmp/broadcast-restore-$$"
+  RESTORE_DUMP_FILE=""
+  mkdir -p "$RESTORE_TEMP_DIR"
+  local temp_dir="$RESTORE_TEMP_DIR"
 
   echo -e "\e[34mExtracting backup archive...\e[0m"
   tar -xzf "$backup_path" -C "$temp_dir"
@@ -89,8 +76,8 @@ function restore() {
     backup_version=$(cat "$temp_dir/VERSION")
   fi
 
-  if [ -f "/opt/broadcast/.current_version" ]; then
-    installed_version=$(cat /opt/broadcast/.current_version)
+  if [ -f "$BROADCAST_ROOT/.current_version" ]; then
+    installed_version=$(cat "$BROADCAST_ROOT/.current_version")
   fi
 
   echo -e "\e[34mBackup version: $backup_version\e[0m"
@@ -145,6 +132,13 @@ function restore() {
   fi
 
   echo -e "\e[34mFound dump file: $(basename "$dump_file")\e[0m"
+  RESTORE_DUMP_FILE="$dump_file"
+}
+
+# Stop services, restore RESTORE_DUMP_FILE into the database, migrate, and
+# restart. Expects restore_prepare to have run.
+function restore_apply() {
+  local dump_file="$RESTORE_DUMP_FILE"
 
   # Stop the application to prevent writes during restore
   echo -e "\e[34mStopping Broadcast services...\e[0m"
@@ -155,8 +149,8 @@ function restore() {
 
   # Start just the database container
   echo -e "\e[34mStarting database container...\e[0m"
-  cd /opt/broadcast
-  set -a && . /opt/broadcast/.image && set +a
+  cd "$BROADCAST_ROOT"
+  set -a && . "$BROADCAST_ROOT/.image" && set +a
   docker compose up -d postgres
 
   # Wait for PostgreSQL to be ready
@@ -186,9 +180,6 @@ function restore() {
   # Clean up dump file in container
   docker compose exec -T postgres rm -f /tmp/restore.dump
 
-  # Clean up temp directory
-  rm -rf "$temp_dir"
-
   # Run database migrations to handle schema differences between versions
   echo -e "\e[34mRunning database migrations...\e[0m"
   docker compose run --rm app bin/rails db:migrate
@@ -205,4 +196,50 @@ function restore() {
   echo "║  Please verify your data at your installation URL.             ║"
   echo "╚════════════════════════════════════════════════════════════════╝"
   echo -e "\e[0m"
+}
+
+function restore() {
+  local backup_file="${1:-}"
+  local confirm_flag="${2:-}"
+
+  # Validate argument
+  if [ -z "$backup_file" ]; then
+    echo -e "\e[31mError: No backup file specified\e[0m"
+    echo -e "Usage: ./broadcast.sh restore <backup-file.tar.gz> [--yes]"
+    echo -e "Example: ./broadcast.sh restore broadcast-backup-v2.0.0-2026-01-28-14-30-00.tar.gz"
+    return 1
+  fi
+
+  local backup_path
+  backup_path=$(restore_find_backup_file "$backup_file") || return 1
+
+  echo -e "\e[34mFound backup file: $backup_path\e[0m"
+
+  # Confirm with user, unless running non-interactively (--yes flag or
+  # BROADCAST_ASSUME_YES=1, e.g. from automation or tests)
+  if [ "$confirm_flag" != "--yes" ] && [ "${BROADCAST_ASSUME_YES:-}" != "1" ]; then
+    echo -e "\e[33m"
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║                         WARNING                                 ║"
+    echo "║  This will REPLACE ALL DATA in your database.                  ║"
+    echo "║  This action cannot be undone.                                 ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo -e "\e[0m"
+    read -p "Are you sure you want to restore from this backup? (yes/no): " confirm
+
+    if [ "$confirm" != "yes" ]; then
+      echo -e "\e[33mRestore cancelled.\e[0m"
+      return 0
+    fi
+  fi
+
+  restore_prepare "$backup_path" || return 1
+
+  local status=0
+  restore_apply || status=$?
+
+  # Clean up temp directory
+  rm -rf "$RESTORE_TEMP_DIR"
+
+  return $status
 }

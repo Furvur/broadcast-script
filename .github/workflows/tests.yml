@@ -1,0 +1,20 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Single entry point shared with local development. Runs unit,
+      # integration (including the Docker-based backup/restore suite —
+      # ubuntu runners ship with Docker), and mock suites. The Vagrant
+      # smoke tests are excluded; they need a VM hypervisor.
+      - name: Run test suite
+        run: bash tests/run_all_tests.sh -v

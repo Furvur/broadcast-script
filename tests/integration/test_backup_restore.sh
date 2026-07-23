@@ -73,36 +73,9 @@ get_row_count() {
 # Source backup/restore functions
 #######################
 
-# Compare two semantic versions. Returns:
-#   0 if equal
-#   1 if first > second
-#   2 if first < second
-compare_versions() {
-    if [ "$1" = "$2" ]; then
-        return 0
-    fi
-
-    local IFS=.
-    local i ver1=($1) ver2=($2)
-
-    # Fill empty positions with zeros
-    for ((i=${#ver1[@]}; i<${#ver2[@]}; i++)); do
-        ver1[i]=0
-    done
-    for ((i=${#ver2[@]}; i<${#ver1[@]}; i++)); do
-        ver2[i]=0
-    done
-
-    for ((i=0; i<${#ver1[@]}; i++)); do
-        if ((10#${ver1[i]} > 10#${ver2[i]})); then
-            return 1
-        fi
-        if ((10#${ver1[i]} < 10#${ver2[i]})); then
-            return 2
-        fi
-    done
-    return 0
-}
+# Test the real functions, not a copy — compare_versions, restore_prepare,
+# restore_find_backup_file and restore() all come from the production script.
+source "$PROJECT_ROOT/scripts/restore.sh"
 
 #######################
 # Test Functions
@@ -294,6 +267,49 @@ test_restore_data_integrity() {
     fi
 }
 
+test_real_restore_function() {
+    log_test "Real restore() pipeline (find → confirm → extract → version gate)"
+
+    # Point the production functions at a scratch installation root
+    local fake_root="$BACKUP_DIR/fake-root"
+    mkdir -p "$fake_root/db/backups"
+    BROADCAST_ROOT="$fake_root"
+
+    # Stub only the apply phase (systemctl/docker against a real install);
+    # pg_restore mechanics are covered by test_restore_data_integrity.
+    local apply_marker="$BACKUP_DIR/apply-marker"
+    rm -f "$apply_marker"
+    restore_apply() {
+        touch "$apply_marker"
+        return 0
+    }
+
+    # Same-version restore with --yes runs the full pipeline
+    echo "$BACKUP_VERSION" > "$fake_root/.current_version"
+    if restore "$BACKUP_ARCHIVE" --yes </dev/null >/dev/null 2>&1 && [ -f "$apply_marker" ]; then
+        log_success "restore --yes ran the full pipeline through to apply"
+    else
+        log_fail "restore --yes did not reach the apply phase"
+    fi
+
+    # Declining the confirmation cancels before apply
+    rm -f "$apply_marker"
+    if echo "no" | restore "$BACKUP_ARCHIVE" >/dev/null 2>&1 && [ ! -f "$apply_marker" ]; then
+        log_success "restore cancels cleanly when confirmation is declined"
+    else
+        log_fail "restore did not cancel on declined confirmation"
+    fi
+
+    # A newer backup on an older install is refused before apply
+    rm -f "$apply_marker"
+    echo "0.0.1" > "$fake_root/.current_version"
+    if ! restore "$BACKUP_ARCHIVE" --yes </dev/null >/dev/null 2>&1 && [ ! -f "$apply_marker" ]; then
+        log_success "restore refuses a newer backup on an older installation"
+    else
+        log_fail "restore did not enforce the version gate"
+    fi
+}
+
 test_version_mismatch_detection() {
     log_test "Version mismatch detection (newer backup → older install)"
 
@@ -354,6 +370,7 @@ main() {
     test_backup_creation
     test_backup_extraction
     test_restore_data_integrity
+    test_real_restore_function
     test_version_mismatch_detection
     test_older_backup_allowed
 

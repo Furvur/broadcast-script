@@ -11,6 +11,8 @@ release cadence begins, dated version sections will be promoted from this list.
 ## [Unreleased]
 
 ### Added
+- `./broadcast.sh restore <file> --yes` (or `BROADCAST_ASSUME_YES=1`) skips the interactive confirmation so restores can run non-interactively from automation.
+- GitHub Actions CI running the full test suite (`tests/run_all_tests.sh`), including the Docker-based backup/restore integration tests, on every push and pull request.
 - Smoke test now clones the canonical remote (`https://github.com/send-broadcast/broadcast-script.git`) by default so it exercises exactly what end users install; pass `--local` to fall back to copying the local working tree.
 - Smoke test now runs against Ubuntu 24.04 and 26.04 by default, with a `--ubuntu VERSION` flag to filter to one and per-version pass/fail reporting in the summary.
 

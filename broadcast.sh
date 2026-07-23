@@ -47,7 +47,7 @@ function display_help() {
   echo "  start                    Start Broadcast services"
   echo "  backup                   Backup Broadcast database and files to S3"
   echo "  backup_database          Backup Broadcast primary database"
-  echo "  restore                  Restore Broadcast primary database"
+  echo "  restore <file> [--yes]   Restore Broadcast primary database (--yes skips confirmation)"
   echo "  help                     Display this help message"
   echo "  monitor                  Automated feedback of host metrics to the dashboard"
   echo "  trigger                  Automated check on triggers from Broadcast to the host"
@@ -159,7 +159,7 @@ main() {
       backup_database
       ;;
     restore)
-      restore "$2"
+      restore "${2:-}" "${3:-}"
       ;;
     monitor)
       monitor
