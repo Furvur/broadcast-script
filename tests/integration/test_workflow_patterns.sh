@@ -63,9 +63,12 @@ test_backup_workflow() {
     # Verify backup was created
     assert_file_exists "$backup_dir/${backup_name}.tar.gz" "Backup archive should be created"
     
-    # Test retention (keep only latest)
-    touch "$backup_dir/broadcast-backup-v1.0.0-2024-07-19.tar.gz"
-    touch "$backup_dir/broadcast-backup-v1.1.0-2024-07-19.tar.gz"
+    # Test retention (keep only latest). Stamp explicit, distinct mtimes:
+    # retention sorts by mtime (ls -t), and a bare touch would date these
+    # "old" backups NOW — within timestamp resolution of the tarball above,
+    # making the sort order a tie broken arbitrarily (flaked in CI).
+    touch -t 202407190100 "$backup_dir/broadcast-backup-v1.0.0-2024-07-19.tar.gz"
+    touch -t 202407190200 "$backup_dir/broadcast-backup-v1.1.0-2024-07-19.tar.gz"
     
     # Simulate retention logic
     local files_to_keep=$(ls -t "$backup_dir"/broadcast-backup-*.tar.gz | head -1)
