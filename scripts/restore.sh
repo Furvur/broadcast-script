@@ -157,8 +157,11 @@ function restore_apply() {
   echo -e "\e[34mWaiting for database to be ready...\e[0m"
   sleep 5
 
-  # Copy dump file into container
-  docker cp "$dump_file" broadcast-postgres:/tmp/restore.dump
+  # Copy dump file into container. Uses `docker compose cp` so the postgres
+  # SERVICE is resolved through the compose file — a plain `docker cp` needs
+  # the container_name, which has drifted from the script before and aborted
+  # a restore midway with services stopped.
+  docker compose cp "$dump_file" postgres:/tmp/restore.dump
 
   # Run pg_restore
   echo -e "\e[34mRestoring database (this may take a while)...\e[0m"

@@ -1,0 +1,105 @@
+#!/bin/bash
+
+# Cross-file consistency: every container/service name that a script passes to
+# docker must actually exist in docker-compose.yml. Scripts and the compose
+# file are edited independently, and a renamed service/container silently
+# breaks whatever script still uses the old name — restore once targeted a
+# container ("broadcast-postgres") that no compose file defines, which aborted
+# a real restore midway with services stopped. This test makes that
+# relationship an executed assertion.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+source "$SCRIPT_DIR/../test_framework.sh"
+
+COMPOSE_FILE="$PROJECT_ROOT/docker-compose.yml"
+
+# Top-level service names in docker-compose.yml (two-space indented keys)
+compose_services() {
+    awk '/^services:/{in_s=1; next} /^[^ ]/{in_s=0} in_s && /^  [a-zA-Z0-9_-]+:$/{gsub(/[ :]/, ""); print}' "$COMPOSE_FILE"
+}
+
+# Explicit container_name values in docker-compose.yml
+compose_container_names() {
+    grep -E '^\s*container_name:' "$COMPOSE_FILE" | awk '{print $2}'
+}
+
+# Names scripts pass to docker-compose subcommands (exec/run/cp), which
+# resolve SERVICE names. Skips shell variables.
+script_service_references() {
+    grep -rhoE 'docker compose (exec( -T)?|run --rm|cp) [a-zA-Z][a-zA-Z0-9_-]*' \
+        "$PROJECT_ROOT/scripts" "$PROJECT_ROOT/broadcast.sh" 2>/dev/null |
+        awk '{print $NF}' | sort -u
+}
+
+# Names scripts pass to plain docker commands (cp targets like "name:/path",
+# logs/exec by container), which resolve CONTAINER names. Skips variables.
+script_container_references() {
+    {
+        grep -rhoE 'docker cp [^ ]+ [a-zA-Z][a-zA-Z0-9_-]*:' \
+            "$PROJECT_ROOT/scripts" "$PROJECT_ROOT/broadcast.sh" 2>/dev/null |
+            sed -E 's/.* ([a-zA-Z][a-zA-Z0-9_-]*):$/\1/'
+        grep -rhoE 'docker (logs( --follow| -f)?|exec) [a-zA-Z][a-zA-Z0-9_-]*' \
+            "$PROJECT_ROOT/scripts" "$PROJECT_ROOT/broadcast.sh" 2>/dev/null |
+            awk '{print $NF}'
+    } | sort -u
+}
+
+test_compose_file_parses() {
+    local services
+    services=$(compose_services)
+    assert_contains "$services" "postgres" "compose file should define a postgres service"
+    assert_contains "$services" "app" "compose file should define an app service"
+}
+
+test_service_references_exist_in_compose() {
+    local services refs ref
+    services=$(compose_services)
+
+    refs=$(script_service_references)
+    assert_not_equals "" "$refs" "expected scripts to reference at least one compose service"
+
+    for ref in $refs; do
+        if ! echo "$services" | grep -qx "$ref"; then
+            assert_equals "a service in docker-compose.yml" "$ref" \
+                "scripts use 'docker compose ... $ref' but no such service exists"
+        fi
+    done
+}
+
+test_container_references_exist_in_compose() {
+    local names refs ref
+    names=$(compose_container_names)
+
+    refs=$(script_container_references)
+
+    for ref in $refs; do
+        if ! echo "$names" | grep -qx "$ref"; then
+            assert_equals "a container_name in docker-compose.yml" "$ref" \
+                "scripts target container '$ref' but no such container_name exists"
+        fi
+    done
+}
+
+run_docker_reference_tests() {
+    echo "Running Docker Reference Consistency Tests"
+    echo "=========================================="
+
+    init_test_framework
+
+    run_test "test_compose_file_parses" test_compose_file_parses
+    run_test "test_service_references_exist_in_compose" test_service_references_exist_in_compose
+    run_test "test_container_references_exist_in_compose" test_container_references_exist_in_compose
+
+    local result
+    print_test_summary
+    result=$?
+
+    cleanup_test_framework
+    return $result
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    run_docker_reference_tests
+fi

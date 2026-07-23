@@ -129,6 +129,7 @@ run_unit_tests() {
     run_test_suite "Version Functions" "$SCRIPT_DIR/unit/test_version_functions.sh"
     run_test_suite "Log Streaming Functions" "$SCRIPT_DIR/unit/test_logs_streaming.sh"
     run_test_suite "Restore Functions" "$SCRIPT_DIR/unit/test_restore_functions.sh"
+    run_test_suite "Docker Reference Consistency" "$SCRIPT_DIR/unit/test_docker_references.sh"
 }
 
 # Run integration tests
