@@ -235,9 +235,13 @@ function restore_apply() {
   # Clean up dump file in container
   docker compose exec -T postgres rm -f /tmp/restore.dump
 
-  # Run database migrations to handle schema differences between versions
+  # Run database migrations to handle schema differences between versions.
+  # --pull never: the compose file sets pull_policy: always, but restore runs
+  # as root, which has no registry login (only the broadcast user does) — and
+  # the image is guaranteed local anyway, since the app was running before
+  # this restore stopped it.
   echo -e "\e[34mRunning database migrations...\e[0m"
-  if ! docker compose run --rm app bin/rails db:migrate; then
+  if ! docker compose run --rm --pull never app bin/rails db:migrate; then
     echo -e "\e[31mError: post-restore database migrations failed\e[0m"
     return 1
   fi

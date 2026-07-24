@@ -545,10 +545,11 @@ test_backup_restore_cycle() {
     # (::text casts avoid quote characters, which vm_exec_root cannot carry.)
     vm_exec_root "docker exec postgres psql -U broadcast -d broadcast_primary_production -t -c \"INSERT INTO schema_migrations (version) VALUES (12345678901234::text)\"" >/dev/null 2>&1
 
-    if vm_exec_root "cd /opt/broadcast && BROADCAST_ASSUME_YES=1 ./broadcast.sh restore $(basename "$tarball")" >/dev/null 2>&1; then
+    if vm_exec_root "cd /opt/broadcast && BROADCAST_ASSUME_YES=1 ./broadcast.sh restore $(basename "$tarball") > /tmp/restore-cycle.log 2>&1"; then
         log_success "restore exited 0"
     else
-        log_fail "restore exited non-zero"
+        log_fail "restore exited non-zero — output follows"
+        vm_exec_root "tail -40 /tmp/restore-cycle.log" 2>/dev/null | sed 's/^/    | /'
         return
     fi
 
