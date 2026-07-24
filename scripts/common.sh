@@ -199,25 +199,11 @@ get_current_version() {
   fi
 }
 
-compare_versions() {
-  local version1="$1"
-  local version2="$2"
-  
-  # Convert versions to comparable format by removing pre-release and build metadata
-  local v1_clean=$(echo "$version1" | sed 's/[-+].*//')
-  local v2_clean=$(echo "$version2" | sed 's/[-+].*//')
-  
-  # Use sort -V for version comparison
-  if printf '%s\n%s\n' "$v1_clean" "$v2_clean" | sort -V -C; then
-    if [ "$v1_clean" = "$v2_clean" ]; then
-      echo "equal"
-    else
-      echo "less"
-    fi
-  else
-    echo "greater"
-  fi
-}
+# NOTE: compare_versions lives in restore.sh (return-code API: 0 equal,
+# 1 first-greater, 2 first-less). A second string-API definition ("equal"/
+# "less"/"greater") used to sit here with ZERO callers — restore.sh is
+# sourced after common.sh, so its definition silently won anyway. Removed
+# to prevent anyone coding against the shadowed API.
 
 # Version history tracking for upgrade/downgrade audit trail
 log_version_change() {

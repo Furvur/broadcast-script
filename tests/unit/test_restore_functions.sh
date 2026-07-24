@@ -147,6 +147,42 @@ test_restore_fails_when_archive_has_no_dump() {
     assert_file_not_exists "$APPLY_MARKER" "restore_apply must not run without a dump file"
 }
 
+# Compute a file's sha256 portably (Linux sha256sum / macOS shasum)
+test_sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    else
+        shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
+
+test_restore_verifies_a_matching_checksum_sidecar() {
+    local archive result=0
+    archive=$(make_backup_archive "$RESTORE_TEST_ROOT" "1.0.0")
+    echo "$(test_sha256_of "$archive")  $(basename "$archive")" > "${archive}.sha256"
+
+    local output
+    output=$(restore "$(basename "$archive")" --yes </dev/null 2>&1) || result=$?
+
+    assert_equals "0" "$result" "restore with a valid sidecar should succeed"
+    assert_contains "$output" "integrity" "restore should mention the integrity check"
+    assert_file_exists "$APPLY_MARKER" "restore_apply should run after a passing checksum"
+}
+
+test_restore_rejects_a_corrupted_backup() {
+    local archive result=0
+    archive=$(make_backup_archive "$RESTORE_TEST_ROOT" "1.0.0")
+    echo "$(test_sha256_of "$archive")  $(basename "$archive")" > "${archive}.sha256"
+    printf 'corruption' >> "$archive"
+
+    local output
+    output=$(restore "$(basename "$archive")" --yes </dev/null 2>&1) || result=$?
+
+    assert_equals "1" "$result" "a tarball that fails its checksum must be refused"
+    assert_contains "$output" "checksum" "the refusal should name the checksum mismatch"
+    assert_file_not_exists "$APPLY_MARKER" "restore_apply must not run on a corrupted backup"
+}
+
 # restore_apply runs in an || context from restore(), which suppresses set -e.
 # Every docker step must therefore fail explicitly — an unchecked failure falls
 # through to the RESTORE COMPLETE banner with nothing restored.
@@ -203,6 +239,8 @@ run_restore_function_tests() {
     run_test "test_restore_rejects_newer_backup_version" test_restore_rejects_newer_backup_version
     run_test "test_restore_allows_older_backup_version" test_restore_allows_older_backup_version
     run_test "test_restore_fails_when_archive_has_no_dump" test_restore_fails_when_archive_has_no_dump
+    run_test "test_restore_verifies_a_matching_checksum_sidecar" test_restore_verifies_a_matching_checksum_sidecar
+    run_test "test_restore_rejects_a_corrupted_backup" test_restore_rejects_a_corrupted_backup
     run_test "test_restore_apply_fails_fast_when_docker_fails" test_restore_apply_fails_fast_when_docker_fails
     run_test "test_restore_cleans_up_temp_dir" test_restore_cleans_up_temp_dir
 

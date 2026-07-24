@@ -54,11 +54,47 @@ function restore_find_backup_file() {
   fi
 }
 
+# Portable sha256 (Linux sha256sum / macOS shasum)
+function sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+# Verify the tarball against its .sha256 sidecar when one exists. A backup
+# corrupted in transit (offsite download, copied between hosts) must be
+# refused BEFORE services are stopped. No sidecar means no verification —
+# older backups predate sidecars.
+function restore_verify_checksum() {
+  local backup_path="$1"
+  local sidecar="${backup_path}.sha256"
+
+  [ -f "$sidecar" ] || return 0
+
+  echo -e "\e[34mVerifying backup integrity against $(basename "$sidecar")...\e[0m"
+  local expected actual
+  expected=$(awk '{print $1}' "$sidecar")
+  actual=$(sha256_of "$backup_path")
+
+  if [ "$expected" != "$actual" ]; then
+    echo -e "\e[31mError: backup failed its checksum — the file is corrupted or incomplete.\e[0m"
+    echo -e "\e[31m  expected: $expected\e[0m"
+    echo -e "\e[31m  actual:   $actual\e[0m"
+    return 1
+  fi
+
+  echo -e "\e[32mChecksum verified.\e[0m"
+}
+
 # Extract the archive, enforce the version gate, and locate the dump file.
 # On success sets RESTORE_TEMP_DIR and RESTORE_DUMP_FILE; on failure cleans up
 # the temp directory and returns 1.
 function restore_prepare() {
   local backup_path="$1"
+
+  restore_verify_checksum "$backup_path" || return 1
 
   RESTORE_TEMP_DIR="/tmp/broadcast-restore-$$"
   RESTORE_DUMP_FILE=""

@@ -36,10 +36,18 @@ function create_database_backup_file() {
     $backup_file_name.dump \
     VERSION
   sudo rm /opt/broadcast/db/backups/$backup_file_name.dump /opt/broadcast/db/backups/VERSION
+
+  # Checksum sidecar so restore (and offsite downloads) can verify integrity
+  sudo sh -c "cd /opt/broadcast/db/backups && sha256sum $backup_file_name.tar.gz > $backup_file_name.tar.gz.sha256"
   sudo chown -R broadcast:broadcast /opt/broadcast/db/backups
 
-  # Remove all but the most recent backup file
+  # Remove all but the most recent backup file, and any sidecar whose
+  # tarball is gone
   cd /opt/broadcast/db/backups && ls -t broadcast-backup-*.tar.gz | tail -n +2 | xargs -r rm --
+  for sidecar in broadcast-backup-*.tar.gz.sha256; do
+    [ -e "$sidecar" ] || continue
+    [ -f "${sidecar%.sha256}" ] || rm -f -- "$sidecar"
+  done
 
   echo -e "\e[32mBackup successfully archived: v${current_version} with timestamp: $timestamp\e[0m"
 }

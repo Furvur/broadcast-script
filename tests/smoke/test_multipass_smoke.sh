@@ -513,6 +513,71 @@ run_health_checks() {
 }
 
 #######################
+# Backup/restore cycle — the only place restore_apply's real systemctl/
+# docker phase runs end to end (unit tests stub it; the Docker integration
+# test re-implements the pg mechanics). This is the regression guard for
+# drift like the broadcast-postgres container-name bug.
+#######################
+
+test_backup_restore_cycle() {
+    log_info "=== Backup/Restore Cycle ==="
+
+    log_test "backup_database produces a tarball with checksum sidecar"
+    vm_exec_root "cd /opt/broadcast && ./broadcast.sh backup_database" >/dev/null 2>&1 || true
+    local tarball
+    tarball=$(vm_exec_root "ls -t /opt/broadcast/db/backups/broadcast-backup-*.tar.gz 2>/dev/null | head -1" 2>/dev/null | tr -d '\r' | tail -1)
+    if [ -n "$tarball" ]; then
+        log_success "backup created: $(basename "$tarball")"
+    else
+        log_fail "no backup tarball produced"
+        return
+    fi
+    if vm_exec_root "test -f ${tarball}.sha256" >/dev/null 2>&1; then
+        log_success "checksum sidecar present"
+    else
+        log_fail "checksum sidecar missing"
+    fi
+
+    log_test "restore --yes replaces the database and the system comes back"
+
+    # Marker row inserted AFTER the backup was taken; a genuine restore drops
+    # and recreates schema_migrations from the dump, so the marker must vanish.
+    # (::text casts avoid quote characters, which vm_exec_root cannot carry.)
+    vm_exec_root "docker exec postgres psql -U broadcast -d broadcast_primary_production -t -c \"INSERT INTO schema_migrations (version) VALUES (12345678901234::text)\"" >/dev/null 2>&1
+
+    if vm_exec_root "cd /opt/broadcast && BROADCAST_ASSUME_YES=1 ./broadcast.sh restore $(basename "$tarball")" >/dev/null 2>&1; then
+        log_success "restore exited 0"
+    else
+        log_fail "restore exited non-zero"
+        return
+    fi
+
+    local marker_count
+    marker_count=$(vm_exec_root "docker exec postgres psql -U broadcast -d broadcast_primary_production -t -c \"SELECT COUNT(*) FROM schema_migrations WHERE version = 12345678901234::text\"" 2>/dev/null | tr -dc '0-9')
+    if [ "$marker_count" = "0" ]; then
+        log_success "post-backup marker gone — data genuinely replaced from the dump"
+    else
+        log_fail "post-backup marker survived (count=${marker_count:-unreadable}) — restore did not replace data"
+    fi
+
+    # The restore restarts the whole stack; give it time to come back
+    local recovered=false
+    for _ in $(seq 1 24); do
+        if vm_exec_root "systemctl is-active broadcast.service" >/dev/null 2>&1 &&
+           vm_exec_root "docker exec app curl -sf -o /dev/null http://localhost:3000/up" >/dev/null 2>&1; then
+            recovered=true
+            break
+        fi
+        sleep 5
+    done
+    if [ "$recovered" = true ]; then
+        log_success "service active and HTTP /up healthy after restore"
+    else
+        log_fail "system did not recover within 120s of restore"
+    fi
+}
+
+#######################
 # Inspection: Display key artifacts
 #######################
 
@@ -791,6 +856,7 @@ run_for_version() {
     prepare_installation
     run_installer
     run_health_checks "Phase 4 (Ubuntu ${version})"
+    test_backup_restore_cycle
     display_inspection
 
     if [ "$FLAG_TEST_REBOOT" = true ]; then
