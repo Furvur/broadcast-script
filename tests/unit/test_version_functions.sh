@@ -1,169 +1,201 @@
 #!/bin/bash
 
-# Simplified unit tests focusing on version validation logic
+# Unit tests for the real version/config helpers in scripts/common.sh,
+# scripts/restore.sh (compare_versions) and broadcast.sh (set_docker_image).
+# Scripts are loaded unmodified via the sandbox harness (only the hardcoded
+# /opt/broadcast constant is redirected to a scratch directory).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 source "$SCRIPT_DIR/../test_framework.sh"
+source "$SCRIPT_DIR/../script_harness.sh"
 
-# Test the version validation regex directly
-test_semantic_version_regex() {
-    # Test valid versions
-    if echo "1.2.3" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)?(\+[a-zA-Z0-9\.-]+)?$'; then
-        assert_equals "0" "0" "1.2.3 should be valid"
-    else
-        assert_equals "0" "1" "1.2.3 should be valid"
-    fi
-    
-    if echo "2.0.0-alpha.1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)?(\+[a-zA-Z0-9\.-]+)?$'; then
-        assert_equals "0" "0" "2.0.0-alpha.1 should be valid"
-    else
-        assert_equals "0" "1" "2.0.0-alpha.1 should be valid"
-    fi
-    
-    # Test invalid versions
-    if echo "1.2" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)?(\+[a-zA-Z0-9\.-]+)?$'; then
-        assert_equals "1" "0" "1.2 should be invalid"
-    else
-        assert_equals "0" "0" "1.2 should be invalid"
-    fi
-    
-    if echo "v1.2.3" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9\.-]+)?(\+[a-zA-Z0-9\.-]+)?$'; then
-        assert_equals "1" "0" "v1.2.3 should be invalid"
-    else
-        assert_equals "0" "0" "v1.2.3 should be invalid"
-    fi
+setup_sandbox() {
+    harness_make_sandbox
 }
 
-test_version_comparison_logic() {
-    # Test version comparison using sort -V
-    local version1="1.0.0"
-    local version2="2.0.0"
-    
-    if printf '%s\n%s\n' "$version1" "$version2" | sort -V -C; then
-        # First version comes first in sort order (is less than or equal)
-        assert_equals "less_or_equal" "less_or_equal" "1.0.0 should be <= 2.0.0"
-    else
-        assert_equals "greater" "greater" "1.0.0 should be > 2.0.0"
+teardown_sandbox() {
+    harness_destroy_sandbox
+}
+
+test_validate_semantic_version_accepts_valid_versions() {
+    local v
+    for v in "1.2.3" "0.0.1" "10.20.30" "2.0.0-alpha.1" "1.2.3+build.5"; do
+        local rc=0
+        sandbox_run "validate_semantic_version '$v'" >/dev/null || rc=$?
+        assert_equals "0" "$rc" "validate_semantic_version should accept $v"
+    done
+}
+
+test_validate_semantic_version_rejects_invalid_versions() {
+    local v
+    for v in "1.2" "v1.2.3" "latest" "1.2.3.4" ""; do
+        local rc=0
+        sandbox_run "validate_semantic_version '$v'" >/dev/null || rc=$?
+        assert_not_equals "0" "$rc" "validate_semantic_version should reject '$v'"
+    done
+}
+
+test_compare_versions_return_codes() {
+    local rc
+
+    rc=0; sandbox_run "compare_versions 1.2.3 1.2.3" >/dev/null || rc=$?
+    assert_equals "0" "$rc" "equal versions should return 0"
+
+    rc=0; sandbox_run "compare_versions 2.0.0 1.9.9" >/dev/null || rc=$?
+    assert_equals "1" "$rc" "first greater should return 1"
+
+    rc=0; sandbox_run "compare_versions 1.0.0 2.0.0" >/dev/null || rc=$?
+    assert_equals "2" "$rc" "first smaller should return 2"
+
+    # Numeric, not lexicographic: 1.10.0 > 1.9.0
+    rc=0; sandbox_run "compare_versions 1.10.0 1.9.0" >/dev/null || rc=$?
+    assert_equals "1" "$rc" "1.10.0 should compare greater than 1.9.0"
+
+    # Missing positions are zero-filled: 1.2 == 1.2.0
+    rc=0; sandbox_run "compare_versions 1.2 1.2.0" >/dev/null || rc=$?
+    assert_equals "0" "$rc" "1.2 should equal 1.2.0"
+}
+
+test_get_current_version_reads_version_file() {
+    echo "3.1.4" > "$SANDBOX_ROOT/.current_version"
+    local out
+    out=$(sandbox_run "get_current_version")
+    assert_equals "3.1.4" "$out" "should read .current_version"
+}
+
+test_get_current_version_defaults_to_unknown() {
+    rm -f "$SANDBOX_ROOT/.current_version"
+    local out
+    out=$(sandbox_run "get_current_version")
+    assert_equals "unknown" "$out" "missing .current_version should yield 'unknown'"
+}
+
+test_log_version_change_creates_history_with_header() {
+    sandbox_run "log_version_change upgrade 1.0.0 1.1.0" >/dev/null
+
+    local history="$SANDBOX_ROOT/.version_history"
+    assert_file_exists "$history" "history file should be created"
+
+    local first_line
+    first_line=$(head -1 "$history")
+    assert_contains "$first_line" "Broadcast Version History" "history should start with header"
+
+    local entry
+    entry=$(tail -1 "$history")
+    assert_contains "$entry" "upgrade | 1.0.0 | 1.1.0" "entry should record the change"
+}
+
+test_log_version_change_caps_history_length() {
+    # The implementation keeps the last 102 lines (100 entries + headers
+    # until they scroll off). Write well past the cap and check it holds.
+    sandbox_run 'for i in $(seq 1 150); do log_version_change upgrade "1.0.$((i-1))" "1.0.$i"; done' >/dev/null
+
+    local lines
+    lines=$(wc -l < "$SANDBOX_ROOT/.version_history" | tr -d ' ')
+    assert_equals "102" "$lines" "history should be capped at 102 lines"
+
+    local last
+    last=$(tail -1 "$SANDBOX_ROOT/.version_history")
+    assert_contains "$last" "1.0.150" "newest entry must survive the cap"
+}
+
+test_set_docker_image_amd64() {
+    # Default harness uname mock reports x86_64
+    sandbox_run "set_docker_image 2.1.0" >/dev/null
+
+    local image
+    image=$(cat "$SANDBOX_ROOT/.image")
+    assert_contains "$image" "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast:2.1.0" \
+        "amd64 should use the plain image with the requested tag"
+    if /usr/bin/grep -q "TARGETARCH" "$SANDBOX_ROOT/.image"; then
+        assert_equals "no TARGETARCH" "TARGETARCH present" "amd64 must not set TARGETARCH"
     fi
-    
-    # Test equal versions
-    if printf '%s\n%s\n' "1.0.0" "1.0.0" | sort -V -C; then
-        assert_equals "equal" "equal" "1.0.0 should equal 1.0.0"
-    fi
+
+    local version
+    version=$(cat "$SANDBOX_ROOT/.current_version")
+    assert_equals "2.1.0" "$version" ".current_version should track the deployed tag"
 }
 
-test_backup_filename_pattern() {
-    # Test backup filename generation pattern
-    local version="1.2.3"
-    local timestamp="2024-07-20-14-30-45"
-    local backup_filename="broadcast-backup-v${version}-${timestamp}"
-    
-    assert_equals "broadcast-backup-v1.2.3-2024-07-20-14-30-45" "$backup_filename" "Backup filename should include version"
-    
-    # Test with unknown version
-    version="unknown"
-    backup_filename="broadcast-backup-v${version}-${timestamp}"
-    assert_equals "broadcast-backup-vunknown-2024-07-20-14-30-45" "$backup_filename" "Should handle unknown version"
+test_set_docker_image_arm64() {
+    harness_mock_uname_arm64
+    sandbox_run "set_docker_image 2.1.0" >/dev/null
+
+    local image
+    image=$(cat "$SANDBOX_ROOT/.image")
+    assert_contains "$image" "DOCKER_IMAGE=gitea.hostedapp.org/broadcast/broadcast-arm:2.1.0" \
+        "arm64 should use the -arm image"
+    assert_contains "$image" "TARGETARCH=arm64" "arm64 must set TARGETARCH"
 }
 
-test_backup_retention_pattern() {
-    # Test backup file retention logic
-    
-    local temp_dir="$TEST_TMP_DIR/backup_test"
-    mkdir -p "$temp_dir"
-    cd "$temp_dir"
-    
-    # Create some test files with different timestamps
-    touch "broadcast-backup-1.tar.gz"
-    sleep 0.1
-    touch "broadcast-backup-2.tar.gz"
-    sleep 0.1
-    touch "broadcast-backup-3.tar.gz"
-    touch "other-file.txt"
-    
-    # Test file retention pattern (keep newest, identify older)
-    if ls broadcast-backup-*.tar.gz >/dev/null 2>&1; then
-        local all_backups=$(ls -t broadcast-backup-*.tar.gz)
-        local newest=$(echo "$all_backups" | head -1)
-        local older_files=$(echo "$all_backups" | tail -n +2)
-        
-        # Should identify newest file
-        assert_contains "$newest" "broadcast-backup-3.tar.gz" "Should identify newest backup"
-        
-        # Should identify older files for cleanup
-        local older_count=$(echo "$older_files" | wc -l | tr -d ' ')
-        assert_equals "2" "$older_count" "Should find 2 older backups"
-    fi
+test_set_docker_image_defaults_to_latest() {
+    sandbox_run "set_docker_image" >/dev/null
+    assert_contains "$(cat "$SANDBOX_ROOT/.image")" ":latest" "no argument should mean :latest"
+    assert_equals "latest" "$(cat "$SANDBOX_ROOT/.current_version")" ".current_version should be latest"
 }
 
-test_configuration_update_pattern() {
-    # Test safe configuration file update pattern
-    local temp_env="$TEST_TMP_DIR/test.env"
-    
-    # Create initial .env file
-    cat > "$temp_env" << EOF
-RAILS_ENV=production
-TLS_DOMAIN=original.example.com
-DATABASE_HOST=postgres
-EOF
-    
-    # Test atomic configuration update approach
-    local temp_file="$temp_env.tmp"
-    grep -v "^TLS_DOMAIN=" "$temp_env" > "$temp_file"
-    echo "TLS_DOMAIN=original.example.com,new.example.com" >> "$temp_file"
-    mv "$temp_file" "$temp_env"
-    
-    # Verify safe update worked
-    local tls_count=$(grep -c "TLS_DOMAIN=" "$temp_env")
-    assert_equals "1" "$tls_count" "Should have exactly one TLS_DOMAIN entry"
-    
-    local domain_value=$(grep "^TLS_DOMAIN=" "$temp_env" | cut -d'=' -f2)
-    assert_contains "$domain_value" "new.example.com" "Should contain new domain"
+test_generate_encryption_keys_adds_all_three_keys() {
+    touch "$SANDBOX_ROOT/app/.env"
+    local rc=0
+    sandbox_run "generate_encryption_keys" >/dev/null || rc=$?
+    assert_equals "0" "$rc" "generate_encryption_keys should succeed"
+
+    local count
+    count=$(/usr/bin/grep -c "ACTIVE_RECORD_ENCRYPTION" "$SANDBOX_ROOT/app/.env")
+    assert_equals "3" "$count" "should add primary, deterministic and salt keys"
+    harness_assert_called "chown broadcast:broadcast" "app/.env ownership should be restored"
 }
 
-test_docker_command_structure() {
-    # Test Docker command patterns used in the scripts
-    local expected_dump_cmd="docker compose exec postgres pg_dump -U broadcast -Fc broadcast_primary_production"
-    
-    # Verify command structure components
-    assert_contains "$expected_dump_cmd" "pg_dump" "Should use pg_dump command"
-    assert_contains "$expected_dump_cmd" "-U broadcast" "Should use broadcast user"
-    assert_contains "$expected_dump_cmd" "-Fc" "Should use custom format"
-    assert_contains "$expected_dump_cmd" "broadcast_primary_production" "Should target primary database"
+test_generate_encryption_keys_is_idempotent() {
+    touch "$SANDBOX_ROOT/app/.env"
+    sandbox_run "generate_encryption_keys" >/dev/null
+    local original
+    original=$(/usr/bin/grep "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY" "$SANDBOX_ROOT/app/.env")
+
+    sandbox_run "generate_encryption_keys" >/dev/null
+
+    local count
+    count=$(/usr/bin/grep -c "ACTIVE_RECORD_ENCRYPTION" "$SANDBOX_ROOT/app/.env")
+    assert_equals "3" "$count" "second run must not duplicate keys"
+    local current
+    current=$(/usr/bin/grep "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY" "$SANDBOX_ROOT/app/.env")
+    assert_equals "$original" "$current" "existing keys must not be regenerated"
 }
 
-test_license_validation_pattern() {
-    # Test license validation URL and payload structure
-    local license_key="test-license-123"
-    local domain="test.example.com"
-    local expected_payload="{\"key\":\"$license_key\", \"domain\":\"$domain\"}"
-    local expected_url="https://sendbroadcast.net/license/check"
-    
-    assert_contains "$expected_payload" "test-license-123" "Payload should contain license key"
-    assert_contains "$expected_payload" "test.example.com" "Payload should contain domain"
-    assert_equals "$expected_url" "https://sendbroadcast.net/license/check" "Should use correct validation URL"
+test_generate_encryption_keys_fails_without_app_env() {
+    rm -f "$SANDBOX_ROOT/app/.env"
+    local rc=0
+    sandbox_run "generate_encryption_keys" >/dev/null || rc=$?
+    assert_equals "1" "$rc" "missing app/.env should fail"
 }
 
 run_version_function_tests() {
     echo "Running Version Function Tests"
     echo "=============================="
-    
+
     init_test_framework
-    
-    run_test "test_semantic_version_regex" test_semantic_version_regex
-    run_test "test_version_comparison_logic" test_version_comparison_logic
-    run_test "test_backup_filename_pattern" test_backup_filename_pattern
-    run_test "test_backup_retention_pattern" test_backup_retention_pattern
-    run_test "test_configuration_update_pattern" test_configuration_update_pattern
-    run_test "test_docker_command_structure" test_docker_command_structure
-    run_test "test_license_validation_pattern" test_license_validation_pattern
-    
+
+    TEST_SETUP_FUNCTION="setup_sandbox"
+    TEST_TEARDOWN_FUNCTION="teardown_sandbox"
+
+    run_test "test_validate_semantic_version_accepts_valid_versions" test_validate_semantic_version_accepts_valid_versions
+    run_test "test_validate_semantic_version_rejects_invalid_versions" test_validate_semantic_version_rejects_invalid_versions
+    run_test "test_compare_versions_return_codes" test_compare_versions_return_codes
+    run_test "test_get_current_version_reads_version_file" test_get_current_version_reads_version_file
+    run_test "test_get_current_version_defaults_to_unknown" test_get_current_version_defaults_to_unknown
+    run_test "test_log_version_change_creates_history_with_header" test_log_version_change_creates_history_with_header
+    run_test "test_log_version_change_caps_history_length" test_log_version_change_caps_history_length
+    run_test "test_set_docker_image_amd64" test_set_docker_image_amd64
+    run_test "test_set_docker_image_arm64" test_set_docker_image_arm64
+    run_test "test_set_docker_image_defaults_to_latest" test_set_docker_image_defaults_to_latest
+    run_test "test_generate_encryption_keys_adds_all_three_keys" test_generate_encryption_keys_adds_all_three_keys
+    run_test "test_generate_encryption_keys_is_idempotent" test_generate_encryption_keys_is_idempotent
+    run_test "test_generate_encryption_keys_fails_without_app_env" test_generate_encryption_keys_fails_without_app_env
+
     local result
     print_test_summary
     result=$?
-    
+
     cleanup_test_framework
     return $result
 }

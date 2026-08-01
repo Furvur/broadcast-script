@@ -65,8 +65,11 @@ For each Ubuntu version selected:
 2. **Prepare Installation** - Pre-creates config files to bypass interactive prompts
 3. **Run Installer** - Executes `./broadcast.sh install`
 4. **Health Checks** - Verifies containers, database, HTTP endpoints, systemd service, cron jobs
-5. **Reboot Recovery** (optional) - Restarts VM and re-runs health checks
-6. **Cleanup** - Destroys VM (unless `--no-cleanup`)
+5. **Install State Checks** - Verifies the security/system half of `install.sh`: UFW rules (22/80/443) and enablement, fail2ban, swap file + fstab persistence, UTC timezone + chrony, unattended upgrades (no auto-reboot), broadcast user's docker group and sudoers entry, `/opt/broadcast` ownership, daily update cron, logrotate config, systemd unit installation/enablement, architecture-correct `.image`, and inotify-tools
+6. **Backup/Restore Cycle** - Takes a real backup, restores it with `--yes`, and verifies data was genuinely replaced and the system recovers
+7. **Reboot Recovery** (optional) - Restarts VM and re-runs health checks
+8. **Domain Change** - Feeds `change_installation_domain`'s interactive prompts from a file: invalid domains are rejected, cancellation leaves state untouched, and a confirmed change updates `.domain`/`TLS_DOMAIN`/`.domain_history` with the system recovering afterwards (always runs last, since it renames the installation)
+9. **Cleanup** - Destroys VM (unless `--no-cleanup`)
 
 The summary at the end reports per-version pass/fail counts in addition to the overall total.
 

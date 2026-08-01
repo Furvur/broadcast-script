@@ -11,17 +11,41 @@ This test suite provides thorough coverage for the bash scripts used to deploy a
 ```
 tests/
 ├── test_framework.sh              # Core testing framework with assertions and mocking
-├── run_all_tests.sh               # Main test runner  
+├── script_harness.sh              # Sandbox harness that loads the REAL scripts
+├── run_all_tests.sh               # Main test runner
 ├── simple_test.sh                 # Basic framework functionality test
 ├── README.md                      # This documentation
 ├── unit/                          # Unit tests for individual functions
-│   └── test_version_functions.sh  # Tests for version validation and logic patterns
+│   ├── test_version_functions.sh  # Real version/config helpers (common.sh, broadcast.sh)
+│   ├── test_upgrade_downgrade.sh  # Real _upgrade_continue/_downgrade_continue flow
+│   ├── test_restore_functions.sh  # Real restore() pipeline
+│   ├── test_logs_streaming.sh     # Real log streaming/watcher reconcile
+│   └── test_docker_references.sh  # Compose file consistency checks
 ├── integration/                   # Integration tests for complete workflows
-│   └── test_workflow_patterns.sh  # Tests for upgrade, backup, and trigger workflows
+│   ├── test_workflow_patterns.sh  # Real trigger/backup/upgrade-entry/update workflows
+│   └── test_backup_restore.sh     # Full backup/restore against a Docker PostgreSQL
 ├── mocks/                         # Tests with mocked external dependencies
-│   └── test_functional_patterns.sh # Functional pattern and external dependency tests
-└── fixtures/                      # Test data and configuration files (empty)
+│   └── test_functional_patterns.sh # Real license validation with a mocked curl
+├── smoke/                         # End-to-end tests in a Multipass VM
+└── fixtures/                      # Test data and configuration files
 ```
+
+## The Script Harness (`script_harness.sh`)
+
+Most management scripts hardcode `/opt/broadcast` and `/etc/systemd/system`
+and shell out to `systemctl`, `docker`, `su`, `curl`, etc. To test the real
+code without root, Docker, or touching the implementation, the harness:
+
+- Copies each script into a scratch sandbox, rewriting ONLY those two path
+  constants to sandbox paths. All logic under test is the original code.
+- Shims external commands via a `mocks/` directory placed first on `PATH`.
+  Every shim logs its invocation to `calls.log`, so tests can assert on
+  what ran and in what order (`harness_assert_called`,
+  `harness_assert_call_order`). `sudo` re-execs its arguments so file
+  operations stay real.
+- Provides a stub `broadcast.sh` inside the sandbox that records dispatch
+  calls made by scripts under test (e.g. `trigger` invoking
+  `broadcast.sh upgrade 1.2.3`).
 
 ## Running Tests
 
@@ -61,41 +85,53 @@ tests/
 
 ### Unit Tests (`tests/unit/`)
 
-Test individual functions and logic patterns in isolation.
+Test the real functions from the management scripts in isolation.
 
-**test_version_functions.sh:**
-- Semantic version regex validation
-- Version comparison logic using `sort -V`
-- Backup filename generation patterns
-- Backup file retention logic
-- Safe configuration file update patterns
-- Docker command structure validation
-- License validation payload patterns
+**test_version_functions.sh** (real `common.sh`, `restore.sh`, `broadcast.sh`):
+- `validate_semantic_version` accept/reject cases
+- `compare_versions` return-code API (equal/greater/less, zero-fill, numeric)
+- `get_current_version` file read and `unknown` fallback
+- `log_version_change` history creation, format, and 102-line cap
+- `set_docker_image` amd64/arm64 image selection and `.current_version` tracking
+- `generate_encryption_keys` creation, idempotency, and missing-env failure
+
+**test_upgrade_downgrade.sh** (real `upgrade.sh`, `downgrade.sh`):
+- `downgrade` input validation (no services touched on rejection)
+- stop → update → re-exec `_continue` sequencing for both directions
+- `_upgrade_continue`: image pinning, pull-as-broadcast-user, service
+  restart ordering, cleanup-service and logs-watcher installation branches,
+  encryption-key backfill without clobbering existing keys, version history
+- `_downgrade_continue`: prune → pull → start sequencing and history
+
+**test_restore_functions.sh** (real `restore.sh`):
+- Full restore() pipeline against a scratch root: file resolution,
+  confirmation, checksum sidecar verification, version gate, cleanup
 
 ### Integration Tests (`tests/integration/`)
 
-Test complete workflows and command sequences.
+Test complete workflows through the real scripts.
 
-**test_workflow_patterns.sh:**
-- Upgrade command sequence (stop→update→pull→start)
-- Backup workflow with file retention logic
-- Trigger file processing for upgrades, backups, and domains
-- Configuration file management and atomic updates
-- License validation API interaction patterns
-- Error handling and edge case scenarios
+**test_workflow_patterns.sh** (real `trigger.sh`, `backup.sh`, `upgrade.sh`, `update.sh`):
+- Upgrade entry: stop → script update → re-exec with version forwarding
+- Trigger processing: versioned/fallback upgrades, domain updates (TLS_DOMAIN
+  composition), backup, job restarts — including trigger-file consumption
+  and the no-trigger no-op case
+- `backup_database`: archive contents (dump + VERSION), checksum sidecar,
+  staging to app/storage, retention pruning, orphan sidecar cleanup
+- `update`: legacy Furvur→send-broadcast remote migration
+
+**test_backup_restore.sh:** full backup/restore cycle against a disposable
+Docker PostgreSQL container (skipped when Docker is unavailable).
 
 ### Mock Tests (`tests/mocks/`)
 
-Test functional patterns and external dependency interactions using mocks.
+Test the real external-dependency code paths with the network mocked.
 
-**test_functional_patterns.sh:**
-- Docker login functionality testing
-- Safe environment variable loading patterns
-- Atomic configuration file management
-- Input validation with proper semantic versioning
-- Command execution with proper parameter handling
-- Safe file operation patterns for backups
-- Network request patterns with HTTPS and timeouts
+**test_functional_patterns.sh** (real `common.sh`):
+- `validate_license` against a mocked sendbroadcast.net API: success writes
+  registry credentials; 401/5xx/malformed-JSON/partial responses are refused
+  without writing credentials; missing license file fails before any request
+- `load_registry_info` credential export, comment handling, missing-file error
 
 ## Test Framework Features
 
@@ -202,19 +238,22 @@ assert_contains "$output" "success" "Should return success"
 
 ## Test Coverage
 
-Current test coverage includes:
-- ✅ Version management and validation
-- ✅ Backup and restore operations
-- ✅ Upgrade and downgrade workflows  
-- ✅ Trigger system functionality
-- ✅ External dependency interactions
-- ✅ Safe configuration management
-- ✅ Command execution patterns
-- ✅ Error handling scenarios
+Covered by tests that execute the real scripts:
+- ✅ Version management and validation (`common.sh`, `restore.sh`, `broadcast.sh`)
+- ✅ Backup creation, retention, and checksum sidecars (`backup.sh`)
+- ✅ Restore pipeline with version gate and integrity checks (`restore.sh`)
+- ✅ Upgrade/downgrade continuation flow (`upgrade.sh`, `downgrade.sh`)
+- ✅ Trigger system dispatch and file consumption (`trigger.sh`)
+- ✅ Script updates and remote migration (`update.sh`)
+- ✅ License validation and registry credential handling (`common.sh`)
+- ✅ Log streaming and watcher reconciliation (`logs.sh`, watcher)
 
-Areas for future expansion:
-- Installation workflow testing
+- ✅ Monitor metrics JSON output (`monitor.sh`)
+- ✅ Command dispatch and argument forwarding (`broadcast.sh` main)
+- ✅ Systemd unit generation and post-upgrade cleanup gate
+  (`init-services.sh`, `post-upgrade-cleanup.sh`)
+- ✅ Install end state via the VM smoke test (`tests/smoke/`)
+
+Not yet covered:
 - SSL certificate management
-- Database initialization
-- Log rotation and cleanup
-- Network security validation
+- `change_installation_domain` (interactive; needs a VM smoke phase)

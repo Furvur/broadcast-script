@@ -129,6 +129,10 @@ run_unit_tests() {
     run_test_suite "Version Functions" "$SCRIPT_DIR/unit/test_version_functions.sh"
     run_test_suite "Log Streaming Functions" "$SCRIPT_DIR/unit/test_logs_streaming.sh"
     run_test_suite "Restore Functions" "$SCRIPT_DIR/unit/test_restore_functions.sh"
+    run_test_suite "Upgrade/Downgrade Functions" "$SCRIPT_DIR/unit/test_upgrade_downgrade.sh"
+    run_test_suite "Monitor Functions" "$SCRIPT_DIR/unit/test_monitor.sh"
+    run_test_suite "broadcast.sh Routing" "$SCRIPT_DIR/unit/test_broadcast_routing.sh"
+    run_test_suite "System Service Scripts" "$SCRIPT_DIR/unit/test_system_services.sh"
     run_test_suite "Docker Reference Consistency" "$SCRIPT_DIR/unit/test_docker_references.sh"
 }
 

@@ -513,6 +513,176 @@ run_health_checks() {
 }
 
 #######################
+# Install state checks — verifies the security/system half of install.sh
+# that the service health checks don't touch: firewall, fail2ban, swap,
+# timezone, unattended upgrades, docker group, sudoers, logrotate, systemd
+# units, and architecture-correct image selection.
+#######################
+
+run_install_state_checks() {
+    log_info "=== Install State Checks (security & system configuration) ==="
+
+    # UFW: enabled, with exactly the promised ports open
+    log_test "UFW is enabled with ports 22/80/443 allowed"
+    local ufw_status
+    ufw_status=$(vm_exec_root "ufw status" 2>/dev/null || true)
+    if echo "$ufw_status" | grep -q "Status: active"; then
+        log_success "UFW is active"
+    else
+        log_fail "UFW is not active"
+    fi
+    local port
+    for port in 22 80 443; do
+        if echo "$ufw_status" | grep -E "^${port}/tcp" | grep -q "ALLOW"; then
+            log_success "UFW allows ${port}/tcp"
+        else
+            log_fail "UFW does not allow ${port}/tcp"
+        fi
+    done
+
+    # fail2ban: installed from the pinned upstream deb and running
+    log_test "fail2ban is enabled and active"
+    if vm_exec_root "systemctl is-enabled --quiet fail2ban && systemctl is-active --quiet fail2ban"; then
+        log_success "fail2ban is enabled and active"
+    else
+        log_fail "fail2ban is not enabled/active"
+    fi
+
+    # Swap: active and persistent across reboots
+    log_test "Swap file is active and in fstab"
+    if vm_exec_root "swapon --show | grep -q /swapfile"; then
+        log_success "/swapfile is active"
+    else
+        log_fail "/swapfile is not active"
+    fi
+    if vm_exec_root "grep -q /swapfile /etc/fstab"; then
+        log_success "/swapfile is in fstab (survives reboot)"
+    else
+        log_fail "/swapfile missing from fstab"
+    fi
+
+    # Timezone and time sync
+    log_test "Timezone is UTC with chrony installed"
+    if vm_exec_root "timedatectl show -p Timezone --value | grep -qx Etc/UTC || timedatectl show -p Timezone --value | grep -qx UTC"; then
+        log_success "timezone is UTC"
+    else
+        log_fail "timezone is not UTC"
+    fi
+    if vm_exec_root "systemctl is-active --quiet chrony || systemctl is-active --quiet chronyd"; then
+        log_success "chrony is running"
+    else
+        log_fail "chrony is not running"
+    fi
+
+    # Unattended upgrades configured, without automatic reboots.
+    # NOTE: vm_exec_root nests the command inside vagrant ssh -c + sudo bash
+    # -c '...', so patterns here must avoid quotes entirely — quoted patterns
+    # get mangled across the shell layers and fail spuriously.
+    log_test "Unattended upgrades are configured"
+    if vm_exec_root "grep -q APT::Periodic::Unattended-Upgrade /etc/apt/apt.conf.d/20auto-upgrades"; then
+        log_success "unattended upgrades enabled"
+    else
+        log_fail "unattended upgrades not configured"
+    fi
+    if vm_exec_root "grep -q Automatic-Reboot.*false /etc/apt/apt.conf.d/20auto-upgrades"; then
+        log_success "automatic reboot disabled"
+    else
+        log_fail "automatic reboot setting missing"
+    fi
+
+    # broadcast user: docker group membership and passwordless sudo
+    log_test "broadcast user has docker group and sudoers entry"
+    if vm_exec_root "id -nG broadcast | grep -qw docker"; then
+        log_success "broadcast user is in the docker group"
+    else
+        log_fail "broadcast user is not in the docker group"
+    fi
+    if vm_exec_root "test -f /etc/sudoers.d/broadcast && grep -q NOPASSWD /etc/sudoers.d/broadcast"; then
+        log_success "sudoers entry present"
+    else
+        log_fail "sudoers entry missing"
+    fi
+
+    # Ownership: the paths install.sh chowns must belong to broadcast. Scoped
+    # to key paths rather than the whole tree — runtime files under logs/
+    # (cron logs, the watcher lock) are legitimately root-owned because
+    # root's cron jobs and the watcher service create them.
+    log_test "Key /opt/broadcast paths are owned by broadcast"
+    local owned_path ownership_ok=true
+    for owned_path in /opt/broadcast /opt/broadcast/app /opt/broadcast/app/.env /opt/broadcast/db/backups /opt/broadcast/broadcast.sh; do
+        if ! vm_exec_root "stat -c %U $owned_path | grep -qx broadcast"; then
+            ownership_ok=false
+            log_fail "$owned_path is not owned by broadcast"
+        fi
+    done
+    if [ "$ownership_ok" = true ]; then
+        log_success "key paths owned by broadcast"
+    fi
+
+    # Update cron entry (health checks already cover monitor and trigger)
+    log_test "Daily update cron job exists"
+    if vm_exec_root "crontab -l 2>/dev/null | grep broadcast.sh | grep -q update"; then
+        log_success "update cron job exists"
+    else
+        log_fail "update cron job not found"
+    fi
+
+    # Logrotate configuration for Broadcast logs
+    log_test "Logrotate is configured for Broadcast logs"
+    if vm_exec_root "test -f /etc/logrotate.d/broadcast && grep -q /opt/broadcast/logs /etc/logrotate.d/broadcast"; then
+        log_success "logrotate config present"
+    else
+        log_fail "logrotate config missing"
+    fi
+
+    # systemd units: broadcast.service enabled for boot, watcher + cleanup
+    # units installed, watcher enabled and running
+    log_test "systemd units are installed and enabled"
+    if vm_exec_root "systemctl is-enabled --quiet broadcast.service"; then
+        log_success "broadcast.service is enabled (starts on boot)"
+    else
+        log_fail "broadcast.service is not enabled"
+    fi
+    if vm_exec_root "test -f /etc/systemd/system/broadcast-post-upgrade-cleanup.service"; then
+        log_success "post-upgrade cleanup unit installed"
+    else
+        log_fail "post-upgrade cleanup unit missing"
+    fi
+    if vm_exec_root "systemctl is-enabled --quiet broadcast-logs-watcher && systemctl is-active --quiet broadcast-logs-watcher"; then
+        log_success "logs watcher is enabled and active"
+    else
+        log_fail "logs watcher is not enabled/active"
+    fi
+
+    # .image matches the VM architecture and is readable by the broadcast user
+    log_test ".image matches the VM architecture"
+    local vm_arch image_line
+    vm_arch=$(vm_exec_root "dpkg --print-architecture" 2>/dev/null | tr -d '[:space:]')
+    image_line=$(vm_exec_root "grep '^DOCKER_IMAGE=' /opt/broadcast/.image" 2>/dev/null || true)
+    if [ "$vm_arch" = "arm64" ]; then
+        if echo "$image_line" | grep -q "broadcast-arm"; then
+            log_success ".image uses the arm image on arm64"
+        else
+            log_fail ".image does not use the arm image on arm64 (got: $image_line)"
+        fi
+    else
+        if echo "$image_line" | grep -q "broadcast:" && ! echo "$image_line" | grep -q "broadcast-arm"; then
+            log_success ".image uses the amd64 image on $vm_arch"
+        else
+            log_fail ".image is wrong for $vm_arch (got: $image_line)"
+        fi
+    fi
+
+    # inotify-tools needed by the logs watcher
+    log_test "inotify-tools is installed"
+    if vm_exec_root "command -v inotifywait" >/dev/null 2>&1; then
+        log_success "inotifywait is available"
+    else
+        log_fail "inotifywait is missing"
+    fi
+}
+
+#######################
 # Backup/restore cycle — the only place restore_apply's real systemctl/
 # docker phase runs end to end (unit tests stub it; the Docker integration
 # test re-implements the pg mechanics). This is the regression guard for
@@ -765,6 +935,95 @@ _test_streaming_lifecycle() {
 }
 
 #######################
+# Domain change — exercises the interactive change_installation_domain
+# command by feeding its prompts from a file. Runs LAST (it changes the
+# domain and restarts the stack; nothing after it depends on the old
+# domain). Commands stay quote-free: vm_exec_root's nested vagrant-ssh/sudo
+# quoting mangles quoted patterns.
+#######################
+
+test_domain_change() {
+    log_info "=== Domain Change (change_installation_domain) ==="
+
+    local old_domain="smoke-test.local"
+    local new_domain="smoke-renamed.local"
+
+    # 1. An invalid domain (no TLD) is rejected and changes nothing
+    log_test "invalid domain is rejected"
+    vm_exec_root "echo invalid-no-tld > /tmp/domain-input.txt"
+    if vm_exec_root "cd /opt/broadcast && ./broadcast.sh change_installation_domain < /tmp/domain-input.txt"; then
+        log_fail "invalid domain was accepted (exit 0)"
+    else
+        log_success "invalid domain rejected (non-zero exit)"
+    fi
+    if vm_exec_root "grep -qx $old_domain /opt/broadcast/.domain"; then
+        log_success ".domain unchanged after rejection"
+    else
+        log_fail ".domain was modified by a rejected change"
+    fi
+
+    # 2. Answering no at the confirmation cancels cleanly
+    log_test "declining the confirmation cancels the change"
+    vm_exec_root "echo $new_domain > /tmp/domain-input.txt; echo n >> /tmp/domain-input.txt"
+    if vm_exec_root "cd /opt/broadcast && ./broadcast.sh change_installation_domain < /tmp/domain-input.txt"; then
+        log_success "cancelled change exits 0"
+    else
+        log_fail "cancelled change exited non-zero"
+    fi
+    if vm_exec_root "grep -qx $old_domain /opt/broadcast/.domain"; then
+        log_success ".domain unchanged after cancellation"
+    else
+        log_fail ".domain was modified by a cancelled change"
+    fi
+
+    # 3. A confirmed change updates every domain artifact and the system
+    # comes back up
+    log_test "confirmed domain change updates config and restarts cleanly"
+    vm_exec_root "echo $new_domain > /tmp/domain-input.txt; echo y >> /tmp/domain-input.txt"
+    if vm_exec_root "cd /opt/broadcast && ./broadcast.sh change_installation_domain < /tmp/domain-input.txt > /tmp/domain-change.log 2>&1"; then
+        log_success "change_installation_domain exited 0"
+    else
+        log_fail "change_installation_domain failed — output follows"
+        vm_exec_root "tail -20 /tmp/domain-change.log" 2>/dev/null | sed 's/^/    | /'
+        return
+    fi
+
+    if vm_exec_root "grep -qx $new_domain /opt/broadcast/.domain"; then
+        log_success ".domain holds the new domain"
+    else
+        log_fail ".domain was not updated"
+    fi
+
+    if vm_exec_root "grep -q TLS_DOMAIN=$new_domain /opt/broadcast/app/.env"; then
+        log_success "TLS_DOMAIN updated in app/.env"
+    else
+        log_fail "TLS_DOMAIN was not updated in app/.env"
+    fi
+
+    if vm_exec_root "grep domain_change /opt/broadcast/.domain_history | grep -q $new_domain"; then
+        log_success "domain change recorded in .domain_history"
+    else
+        log_fail ".domain_history entry missing"
+    fi
+
+    log_test "system recovers after the domain-change restart"
+    local recovered=false
+    for _ in $(seq 1 24); do
+        if vm_exec_root "systemctl is-active broadcast.service" >/dev/null 2>&1 &&
+           vm_exec_root "docker exec app curl -sf -o /dev/null http://localhost:3000/up" >/dev/null 2>&1; then
+            recovered=true
+            break
+        fi
+        sleep 5
+    done
+    if [ "$recovered" = true ]; then
+        log_success "service active and HTTP /up healthy on the new domain"
+    else
+        log_fail "system did not recover within 120s of the domain change"
+    fi
+}
+
+#######################
 # Parse CLI Arguments
 #######################
 
@@ -857,6 +1116,7 @@ run_for_version() {
     prepare_installation
     run_installer
     run_health_checks "Phase 4 (Ubuntu ${version})"
+    run_install_state_checks
     test_backup_restore_cycle
     display_inspection
 
@@ -871,6 +1131,9 @@ run_for_version() {
     if [ "$FLAG_TEST_REAL_UPGRADE" = true ]; then
         test_real_upgrade
     fi
+
+    # Always last: changes the installation domain and restarts the stack
+    test_domain_change
 
     # Tear down this version's VM before moving on so disk/VMware resources free up
     cleanup
